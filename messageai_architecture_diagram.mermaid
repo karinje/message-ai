@@ -1,0 +1,154 @@
+graph TB
+    subgraph "iOS App - Swift/SwiftUI"
+        subgraph "Presentation Layer"
+            V1[ChatListView]
+            V2[ChatDetailView]
+            V3[ProfileView]
+            V4[GroupChatView]
+            V5[AIChatView]
+        end
+        
+        subgraph "ViewModel Layer"
+            VM1[AuthViewModel]
+            VM2[ChatListViewModel]
+            VM3[ChatDetailViewModel]
+            VM4[ProfileViewModel]
+            VM5[AIViewModel]
+        end
+        
+        subgraph "Service Layer"
+            S1[AuthService]
+            S2[ChatService]
+            S3[UserService]
+            S4[StorageService]
+            S5[AIService]
+            S6[NotificationService]
+            S7[NetworkMonitor]
+        end
+        
+        subgraph "Local Storage"
+            L1[(SwiftData)]
+            L2[Message Cache]
+            L3[Message Queue]
+        end
+        
+        subgraph "Models"
+            M1[User]
+            M2[Message]
+            M3[Conversation]
+        end
+    end
+    
+    subgraph "Firebase Backend - Google Cloud"
+        subgraph "Firebase Services"
+            FB1[(Firestore Database)]
+            FB2[Firebase Auth]
+            FB3[Cloud Storage]
+            FB4[Cloud Messaging FCM]
+        end
+        
+        subgraph "Cloud Functions - Node.js"
+            CF1[AI Chat Endpoint]
+            CF2[Calendar Extractor]
+            CF3[Decision Summarizer]
+            CF4[Priority Detector]
+            CF5[RSVP Tracker]
+            CF6[Deadline Extractor]
+            CF7[Proactive Assistant]
+        end
+    end
+    
+    subgraph "External AI Services"
+        AI1[OpenAI GPT-4]
+        AI2[Anthropic Claude]
+    end
+    
+    subgraph "Apple Services"
+        AP1[APNs Push Notifications]
+        AP2[EventKit Calendar]
+    end
+    
+    %% View to ViewModel connections
+    V1 --> VM2
+    V2 --> VM3
+    V3 --> VM4
+    V4 --> VM3
+    V5 --> VM5
+    
+    %% ViewModel to Service connections
+    VM1 --> S1
+    VM2 --> S2
+    VM2 --> S3
+    VM3 --> S2
+    VM3 --> S4
+    VM3 --> S7
+    VM4 --> S3
+    VM5 --> S5
+    
+    %% Service to Firebase connections
+    S1 <-->|Auth API| FB2
+    S2 <-->|Real-time Listeners| FB1
+    S3 <-->|CRUD Operations| FB1
+    S4 <-->|Upload/Download| FB3
+    S5 -->|HTTPS Request| CF1
+    S6 <-->|Device Tokens| FB4
+    
+    %% Service to Local Storage
+    S2 --> L1
+    S2 --> L3
+    L1 --> L2
+    
+    %% Network Monitor
+    S7 -.->|Online/Offline Status| S2
+    
+    %% Cloud Functions to AI
+    CF1 --> AI1
+    CF2 --> AI1
+    CF3 --> AI1
+    CF4 --> AI1
+    CF5 --> AI1
+    CF6 --> AI1
+    CF7 --> AI1
+    
+    CF1 --> AI2
+    CF2 --> AI2
+    
+    %% Cloud Functions to Firestore
+    CF1 --> FB1
+    CF2 --> FB1
+    CF3 --> FB1
+    CF4 --> FB1
+    CF5 --> FB1
+    CF6 --> FB1
+    CF7 --> FB1
+    
+    %% FCM to APNs
+    FB4 -->|Push Notifications| AP1
+    AP1 -.->|Notification Delivery| V2
+    
+    %% Proactive Assistant to Calendar
+    CF7 --> AP2
+    S5 --> AP2
+    
+    %% Models used by Services
+    M1 -.-> S1
+    M1 -.-> S3
+    M2 -.-> S2
+    M3 -.-> S2
+    
+    %% Styling
+    classDef viewClass fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
+    classDef vmClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef serviceClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef storageClass fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef firebaseClass fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef aiClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef appleClass fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    
+    class V1,V2,V3,V4,V5 viewClass
+    class VM1,VM2,VM3,VM4,VM5 vmClass
+    class S1,S2,S3,S4,S5,S6,S7 serviceClass
+    class L1,L2,L3 storageClass
+    class FB1,FB2,FB3,FB4,CF1,CF2,CF3,CF4,CF5,CF6,CF7 firebaseClass
+    class AI1,AI2 aiClass
+    class AP1,AP2 appleClass
