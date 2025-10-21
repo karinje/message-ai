@@ -1,12 +1,16 @@
-# MessageAI - Task List & PR Breakdown
+# Weftly - Task List & PR Breakdown
+
+**App Name:** Weftly  
+**Firebase Project:** Weftly  
+**Bundle ID:** com.sanjaykarinje.weftly  
 
 ## Project File Structure
 
 ```
-MessageAI/
-├── MessageAI.xcodeproj
-├── MessageAI/
-│   ├── MessageAIApp.swift                    # App entry point
+Weftly/
+├── Weftly.xcodeproj
+├── Weftly/
+│   ├── WeftlyApp.swift                       # App entry point
 │   ├── GoogleService-Info.plist              # Firebase configuration
 │   │
 │   ├── Models/

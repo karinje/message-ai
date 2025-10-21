@@ -1,6 +1,10 @@
-# MessageAI
+# Weftly
 
 A real-time messaging app for busy parents and caregivers.
+
+**App Name:** Weftly  
+**Bundle ID:** com.sanjaykarinje.weftly  
+**Firebase Project:** Weftly  
 
 ## Project Status
 🚧 **MVP Development** - Building core messaging infrastructure
@@ -15,7 +19,7 @@ A real-time messaging app for busy parents and caregivers.
 ## Setup
 1. Install Xcode 16.x
 2. Clone this repository
-3. Open `MessageAI.xcodeproj` in Xcode
+3. Open `Weftly.xcodeproj` in Xcode
 4. Add your `GoogleService-Info.plist` file to the project
 5. Build and run
 

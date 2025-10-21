@@ -1,5 +1,6 @@
 # MessageAI - Product Requirements Document (MVP)
 
+**App Name:** Weftly (Firebase: "Weftly", Bundle ID: "com.sanjaykarinje.weftly")  
 **Target Persona:** Busy Parent/Caregiver  
 **Platform:** iOS (iPhone)  
 **Timeline:** 24 hours to MVP checkpoint  
