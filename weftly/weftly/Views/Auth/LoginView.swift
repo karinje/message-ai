@@ -81,6 +81,40 @@ struct LoginView: View {
                         showSignUp = true
                     }
                     .font(.subheadline)
+                    
+                    // Divider
+                    HStack {
+                        Rectangle()
+                            .frame(height: 1)
+                            .foregroundStyle(Color(.systemGray5))
+                        Text("OR")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Rectangle()
+                            .frame(height: 1)
+                            .foregroundStyle(Color(.systemGray5))
+                    }
+                    .padding(.vertical)
+                    
+                    // Google Sign In
+                    Button(action: signInWithGoogle) {
+                        HStack {
+                            Image(systemName: "globe")
+                                .foregroundStyle(.primary)
+                            Text("Continue with Google")
+                                .foregroundStyle(.primary)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(.systemGray4), lineWidth: 1)
+                        )
+                    }
+                    .disabled(isLoading)
                 }
                 .padding(.horizontal, 32)
                 
@@ -89,6 +123,21 @@ struct LoginView: View {
             .sheet(isPresented: $showSignUp) {
                 SignUpView(isAuthenticated: $isAuthenticated)
             }
+        }
+    }
+    
+    private func signInWithGoogle() {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                _ = try await authService.signInWithGoogle()
+                isAuthenticated = true
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isLoading = false
         }
     }
     

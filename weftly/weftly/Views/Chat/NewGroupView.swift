@@ -20,6 +20,9 @@ struct NewGroupView: View {
     
     private let firestoreService = FirestoreService()
     
+    // Cache selected user models so they persist across search changes
+    @State private var selectedUserDetails: [String: User] = [:]
+    
     var body: some View {
         NavigationStack {
             VStack {
@@ -46,6 +49,7 @@ struct NewGroupView: View {
                                             .overlay(alignment: .topTrailing) {
                                                 Button {
                                                     selectedUsers.remove(userId)
+                                                    selectedUserDetails.removeValue(forKey: userId)
                                                 } label: {
                                                     Image(systemName: "xmark.circle.fill")
                                                         .foregroundStyle(.gray)
@@ -74,8 +78,10 @@ struct NewGroupView: View {
                             if let userId = user.id {
                                 if selectedUsers.contains(userId) {
                                     selectedUsers.remove(userId)
+                                    selectedUserDetails.removeValue(forKey: userId)
                                 } else {
                                     selectedUsers.insert(userId)
+                                    selectedUserDetails[userId] = user
                                 }
                             }
                         } label: {
@@ -149,15 +155,12 @@ struct NewGroupView: View {
     
     private func createGroup() {
         isCreating = true
+        print("👥 Creating group with selected users: \(selectedUsers)")
         
         Task {
             do {
-                let participants = searchResults.filter { user in
-                    if let userId = user.id {
-                        return selectedUsers.contains(userId)
-                    }
-                    return false
-                }
+                let participants = selectedUsers.compactMap { selectedUserDetails[$0] }
+                print("👥 Resolved participants: \(participants.map { $0.displayName })")
                 
                 _ = try await viewModel.createGroupConversation(name: groupName, participants: participants)
                 dismiss()

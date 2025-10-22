@@ -8,8 +8,8 @@
 import Foundation
 import FirebaseFirestore
 
-struct Message: Identifiable, Codable {
-    @DocumentID var id: String?
+struct Message: Identifiable, Codable, Equatable {
+    var id: String?
     var conversationId: String
     var senderId: String
     var senderName: String
@@ -19,6 +19,7 @@ struct Message: Identifiable, Codable {
     var timestamp: Date
     var status: MessageStatus
     var readBy: [String] // Array of user IDs who have read this message
+    var localImageData: Data?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -33,7 +34,7 @@ struct Message: Identifiable, Codable {
         case readBy
     }
     
-    init(id: String? = nil, conversationId: String, senderId: String, senderName: String, senderProfileUrl: String? = nil, text: String, imageUrl: String? = nil, timestamp: Date = Date(), status: MessageStatus = .sending, readBy: [String] = []) {
+    init(id: String? = nil, conversationId: String, senderId: String, senderName: String, senderProfileUrl: String? = nil, text: String, imageUrl: String? = nil, timestamp: Date = Date(), status: MessageStatus = .sending, readBy: [String] = [], localImageData: Data? = nil) {
         self.id = id
         self.conversationId = conversationId
         self.senderId = senderId
@@ -44,6 +45,7 @@ struct Message: Identifiable, Codable {
         self.timestamp = timestamp
         self.status = status
         self.readBy = readBy
+        self.localImageData = localImageData
     }
 }
 

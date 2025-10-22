@@ -7,10 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F0710B4F2EA831A700EBF6ED /* Nuke in Frameworks */ = {isa = PBXBuildFile; productRef = F0710B4E2EA831A700EBF6ED /* Nuke */; };
+		F0710B512EA831A700EBF6ED /* NukeExtensions in Frameworks */ = {isa = PBXBuildFile; productRef = F0710B502EA831A700EBF6ED /* NukeExtensions */; };
+		F0710B532EA831A700EBF6ED /* NukeUI in Frameworks */ = {isa = PBXBuildFile; productRef = F0710B522EA831A700EBF6ED /* NukeUI */; };
+		F0710B552EA831A700EBF6ED /* NukeVideo in Frameworks */ = {isa = PBXBuildFile; productRef = F0710B542EA831A700EBF6ED /* NukeVideo */; };
 		F08DE5562EA726CF000ED503 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = F08DE5552EA726CF000ED503 /* FirebaseAuth */; };
 		F08DE5582EA726CF000ED503 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = F08DE5572EA726CF000ED503 /* FirebaseFirestore */; };
 		F08DE55A2EA726CF000ED503 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = F08DE5592EA726CF000ED503 /* FirebaseMessaging */; };
 		F08DE55C2EA726CF000ED503 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = F08DE55B2EA726CF000ED503 /* FirebaseStorage */; };
+		F08DE5BB2EA74A24000ED503 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = F08DE5BA2EA74A24000ED503 /* GoogleSignIn */; };
+		F08DE5BD2EA74A24000ED503 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = F08DE5BC2EA74A24000ED503 /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,9 +42,22 @@
 		F08DE53D2EA72005000ED503 /* weftlyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = weftlyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F08DE5B92EA74965000ED503 /* Exceptions for "weftly" folder in "weftly" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F08DE5252EA72002000ED503 /* weftly */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F08DE5282EA72002000ED503 /* weftly */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F08DE5B92EA74965000ED503 /* Exceptions for "weftly" folder in "weftly" target */,
+			);
 			path = weftly;
 			sourceTree = "<group>";
 		};
@@ -59,8 +78,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F08DE5BB2EA74A24000ED503 /* GoogleSignIn in Frameworks */,
+				F0710B512EA831A700EBF6ED /* NukeExtensions in Frameworks */,
 				F08DE55A2EA726CF000ED503 /* FirebaseMessaging in Frameworks */,
+				F0710B4F2EA831A700EBF6ED /* Nuke in Frameworks */,
 				F08DE55C2EA726CF000ED503 /* FirebaseStorage in Frameworks */,
+				F08DE5BD2EA74A24000ED503 /* GoogleSignInSwift in Frameworks */,
+				F0710B532EA831A700EBF6ED /* NukeUI in Frameworks */,
+				F0710B552EA831A700EBF6ED /* NukeVideo in Frameworks */,
 				F08DE5562EA726CF000ED503 /* FirebaseAuth in Frameworks */,
 				F08DE5582EA726CF000ED503 /* FirebaseFirestore in Frameworks */,
 			);
@@ -127,6 +152,12 @@
 				F08DE5572EA726CF000ED503 /* FirebaseFirestore */,
 				F08DE5592EA726CF000ED503 /* FirebaseMessaging */,
 				F08DE55B2EA726CF000ED503 /* FirebaseStorage */,
+				F08DE5BA2EA74A24000ED503 /* GoogleSignIn */,
+				F08DE5BC2EA74A24000ED503 /* GoogleSignInSwift */,
+				F0710B4E2EA831A700EBF6ED /* Nuke */,
+				F0710B502EA831A700EBF6ED /* NukeExtensions */,
+				F0710B522EA831A700EBF6ED /* NukeUI */,
+				F0710B542EA831A700EBF6ED /* NukeVideo */,
 			);
 			productName = weftly;
 			productReference = F08DE5262EA72002000ED503 /* weftly.app */;
@@ -212,6 +243,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				F08DE5542EA726CF000ED503 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				F08DE5B72EA739DA000ED503 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				F0710B4D2EA831A700EBF6ED /* XCRemoteSwiftPackageReference "Nuke" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F08DE5272EA72002000ED503 /* Products */;
@@ -415,6 +448,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = weftly/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -447,6 +481,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = weftly/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -592,6 +627,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		F0710B4D2EA831A700EBF6ED /* XCRemoteSwiftPackageReference "Nuke" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kean/Nuke";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.8.0;
+			};
+		};
 		F08DE5542EA726CF000ED503 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -600,9 +643,37 @@
 				minimumVersion = 12.4.0;
 			};
 		};
+		F08DE5B72EA739DA000ED503 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		F0710B4E2EA831A700EBF6ED /* Nuke */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F0710B4D2EA831A700EBF6ED /* XCRemoteSwiftPackageReference "Nuke" */;
+			productName = Nuke;
+		};
+		F0710B502EA831A700EBF6ED /* NukeExtensions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F0710B4D2EA831A700EBF6ED /* XCRemoteSwiftPackageReference "Nuke" */;
+			productName = NukeExtensions;
+		};
+		F0710B522EA831A700EBF6ED /* NukeUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F0710B4D2EA831A700EBF6ED /* XCRemoteSwiftPackageReference "Nuke" */;
+			productName = NukeUI;
+		};
+		F0710B542EA831A700EBF6ED /* NukeVideo */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F0710B4D2EA831A700EBF6ED /* XCRemoteSwiftPackageReference "Nuke" */;
+			productName = NukeVideo;
+		};
 		F08DE5552EA726CF000ED503 /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F08DE5542EA726CF000ED503 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
@@ -622,6 +693,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F08DE5542EA726CF000ED503 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		F08DE5BA2EA74A24000ED503 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F08DE5B72EA739DA000ED503 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		F08DE5BC2EA74A24000ED503 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F08DE5B72EA739DA000ED503 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

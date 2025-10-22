@@ -9,12 +9,12 @@ import SwiftUI
 
 struct ChatListView: View {
     @StateObject private var viewModel: ChatListViewModel
-    @StateObject private var authService: AuthService
+    @ObservedObject var authService: AuthService
     @State private var showNewChat = false
     @State private var showSearch = false
     
     init(authService: AuthService) {
-        _authService = StateObject(wrappedValue: authService)
+        self.authService = authService
         _viewModel = StateObject(wrappedValue: ChatListViewModel(authService: authService))
     }
     
@@ -22,7 +22,7 @@ struct ChatListView: View {
         NavigationStack {
             List {
                 ForEach(viewModel.conversations) { conversation in
-                    NavigationLink(destination: ChatDetailView(conversation: conversation, authService: authService)) {
+                    NavigationLink(destination: ChatDetailView(conversation: conversation, authService: authService, chatListViewModel: viewModel)) {
                         ConversationRow(conversation: conversation, currentUserId: authService.currentUser?.id ?? "")
                     }
                 }
@@ -39,15 +39,22 @@ struct ChatListView: View {
                             Label("Sign Out", systemImage: "arrow.right.square")
                         }
                     } label: {
-                        if let user = authService.currentUser {
-                            Text(user.displayName.prefix(2).uppercased())
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(Color.blue)
-                                .clipShape(Circle())
+                        Group {
+                            if let user = authService.currentUser {
+                                Text(user.displayName.prefix(2).uppercased())
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.blue)
+                                    .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: 32, height: 32)
+                            }
                         }
+                        .id(authService.currentUser?.id ?? "loading")
                     }
                 }
                 
@@ -76,10 +83,20 @@ struct ChatListView: View {
                 NewGroupView(authService: authService, viewModel: viewModel)
             }
             .onAppear {
-                viewModel.startListening()
+                print("📱 ChatListView appeared, user: \(authService.currentUser?.displayName ?? "nil")")
+                if authService.currentUser != nil {
+                    viewModel.startListening()
+                }
             }
             .onDisappear {
                 viewModel.stopListening()
+            }
+            .onChange(of: authService.currentUser) { _, newUser in
+                print("📱 Auth state changed, user: \(newUser?.displayName ?? "nil")")
+                viewModel.stopListening()
+                if newUser != nil {
+                    viewModel.startListening()
+                }
             }
         }
     }

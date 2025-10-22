@@ -8,6 +8,7 @@
 import SwiftUI
 import FirebaseCore
 import SwiftData
+import FirebaseMessaging
 
 @main
 struct weftlyApp: App {
@@ -16,15 +17,14 @@ struct weftlyApp: App {
     let modelContainer: ModelContainer
     
     init() {
-        // Initialize Firebase
         FirebaseApp.configure()
-        
-        // Initialize SwiftData
         do {
             modelContainer = try ModelContainer(for: PendingMessage.self)
         } catch {
-            fatalError("Failed to initialize ModelContainer: \(error)")
+            fatalError("Failed to initialize ModelContainecuchr: \(error)")
         }
+        Messaging.messaging().delegate = NotificationDelegate.shared
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
     }
     
     var body: some Scene {
@@ -32,6 +32,10 @@ struct weftlyApp: App {
             ContentView()
                 .environmentObject(authService)
                 .modelContainer(modelContainer)
+                .task {
+                    NotificationService.shared.configure(authService: authService)
+                    NotificationService.shared.requestAuthorizationIfNeeded()
+                }
         }
     }
 }

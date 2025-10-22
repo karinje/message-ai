@@ -4,6 +4,17 @@
 **Firebase Project:** Weftly  
 **Bundle ID:** com.sanjaykarinje.weftly  
 
+## MVP Status (Oct 22, 2025)
+- ✅ Authentication & profiles (Firebase Email/Password, avatar support)
+- ✅ 1:1 messaging with optimistic UI, read receipts, timestamps
+- ✅ Group messaging (member roster header, real-time delivery)
+- ✅ Image sharing with Firebase Storage + local caching (Nuke)
+- ✅ Offline queue & auto-resend (tested via macOS Network Link Conditioner)
+- ✅ Presence & typing indicators, message list banners
+- ✅ Local in-app notifications mimicking push when app is active
+- ⚠️ APNs push notifications pending Apple Developer enrollment (local notification proxy in place)
+- ✅ Manual QA on iOS simulators (iPhone 17 / iPhone 17 Pro)
+
 ## Project File Structure
 
 ```
@@ -127,78 +138,44 @@ Weftly/
 **Description:** Initialize Xcode project, add Firebase SDK, configure basic project structure
 
 **Tasks:**
-- [ ] Create new iOS App project in Xcode (SwiftUI, Swift, iOS 17+)
-- [ ] Set bundle identifier: `com.[yourname].messageai`
-- [ ] Add Firebase SDK via Swift Package Manager
-  - Add package: `https://github.com/firebase/firebase-ios-sdk`
-  - Select: FirebaseAuth, FirebaseFirestore, FirebaseStorage, FirebaseMessaging
-- [ ] Create Firebase project at console.firebase.google.com
-- [ ] Add iOS app to Firebase (use bundle ID)
-- [ ] Download `GoogleService-Info.plist` and add to Xcode project
-- [ ] Create folder structure (Models, Services, Views, ViewModels, Utilities, Persistence)
-- [ ] Initialize Firebase in `MessageAIApp.swift`
-- [ ] Test: App launches without errors
+- [x] Create new iOS App project in Xcode (SwiftUI, Swift, iOS 17+)
+- [x] Set bundle identifier: `com.sanjaykarinje.weftly`
+- [x] Add Firebase SDK via Swift Package Manager
+  - [x] Add package: `https://github.com/firebase/firebase-ios-sdk`
+  - [x] Select: FirebaseAuth, FirebaseFirestore, FirebaseStorage, FirebaseMessaging
+- [x] Create Firebase project at console.firebase.google.com
+- [x] Add iOS app to Firebase (use bundle ID)
+- [x] Download `GoogleService-Info.plist` and add to Xcode project
+- [x] Create folder structure (Models, Services, Views, ViewModels, Utilities, Persistence)
+- [x] Initialize Firebase in `weftlyApp.swift`
+- [x] Test: App launches without errors
 
-**Files Created:**
-- `MessageAIApp.swift` (modify)
-- `GoogleService-Info.plist` (add)
-- `Services/FirebaseManager.swift` (create)
-- `Utilities/Constants.swift` (create)
-
-**Files Modified:**
-- Project configuration
-- Info.plist (add Firebase URLs)
+**Files Created/Modified (actual MVP):**
+- `weftly/weftly/weftlyApp.swift`
+- `GoogleService-Info.plist`
+- Folder structure for Models/Services/ViewModels/Views/Utils
 
 ---
 
-### PR #2: Authentication System ✅ UNIT TEST REQUIRED
+### PR #2: Authentication System
 **Branch:** `feature/authentication`  
-**Estimated Time:** 2-3 hours (+ 30 mins for tests)  
-**Description:** Implement email/password auth with Firebase, session management
+**Description:** Email/password auth with Firebase, session management
 
-**Tasks:**
-- [ ] Enable Firebase Authentication (Email/Password) in Firebase Console
-- [ ] Create `User` model with id, email, displayName, profilePictureUrl, lastSeen
-- [ ] Create `AuthService.swift` with sign up, login, logout, auth state listener
-- [ ] Create `AuthViewModel.swift` for state management
-- [ ] Build `LoginView.swift` with email/password fields
-- [ ] Build `SignUpView.swift` with name, email, password fields
-- [ ] Create `AuthContainerView.swift` to toggle between login/signup
-- [ ] Add form validation (email format, password length)
-- [ ] Add error handling (display Firebase error messages)
-- [ ] **UNIT TESTS:** Create `AuthServiceTests.swift`
-  - [ ] Test email validation logic
-  - [ ] Test password validation (minimum 6 characters)
-  - [ ] Test auth state changes (logged out → logged in)
-- [ ] **INTEGRATION TEST:** Create `AuthFlowTests.swift`
-  - [ ] Test complete signup flow (UI → Firebase)
-  - [ ] Test login with valid credentials
-  - [ ] Test logout functionality
-- [ ] Test: Create account, logout, login again
+**Tasks (MVP implementation):**
+- [x] Enable Firebase Authentication (Email/Password)
+- [x] `User` model with id, email, displayName, profilePictureUrl, lastSeen, fcmToken
+- [x] `AuthService` for sign up, login, logout, auth state listener
+- [x] `LoginView` and `SignUpView` with validation & error handling
+- [x] Auth state wiring in `ContentView`
+- [x] Test manually: create account, logout, login again
 
-**Files Created:**
-- `Models/User.swift`
-- `Services/AuthService.swift`
-- `ViewModels/AuthViewModel.swift`
-- `Views/Auth/LoginView.swift`
-- `Views/Auth/SignUpView.swift`
-- `Views/Auth/AuthContainerView.swift`
-- `MessageAITests/AuthServiceTests.swift` ✅
-- `MessageAIUITests/AuthFlowTests.swift` ✅
-
-**Files Modified:**
-- `MessageAIApp.swift` (add auth state listener)
-
-**Test Verification Criteria:**
-- ✅ All unit tests pass (email/password validation)
-- ✅ Can create account programmatically in test
-- ✅ Auth state listener fires correctly
+*Unit/UI tests deferred for MVP.*
 
 ---
 
-### PR #3: User Profile Management ✅ UNIT TEST REQUIRED
+### PR #3: User Profile Management
 **Branch:** `feature/user-profile`  
-**Estimated Time:** 2 hours (+ 30 mins for tests)  
+**Status:** Core profile CRUD implemented in MVP; automated tests deferred  
 **Description:** User profiles stored in Firestore, profile picture support
 
 **Tasks:**
@@ -237,7 +214,7 @@ Weftly/
 
 ### PR #4: Chat List & Navigation
 **Branch:** `feature/chat-list`  
-**Estimated Time:** 2 hours  
+**Status:** Implemented (chat list UI + navigation live)  
 **Description:** Main navigation, chat list UI, conversation structure
 
 **Tasks:**
@@ -265,9 +242,9 @@ Weftly/
 
 ---
 
-### PR #5: Core 1:1 Messaging ✅ UNIT TEST + INTEGRATION TEST REQUIRED
+### PR #5: Core 1:1 Messaging
 **Branch:** `feature/core-messaging`  
-**Estimated Time:** 4-5 hours (+ 1 hour for tests)  
+**Status:** Implemented end-to-end; persistence via SwiftData; tests deferred  
 **Description:** Send/receive text messages, real-time sync, message persistence
 
 **Tasks:**
@@ -327,7 +304,7 @@ Weftly/
 
 ### PR #6: Real-Time Features (Typing, Presence)
 **Branch:** `feature/realtime-indicators`  
-**Estimated Time:** 2 hours  
+**Status:** Implemented (typing indicator + presence)  
 **Description:** Typing indicators and online/offline status
 
 **Tasks:**
@@ -354,9 +331,9 @@ Weftly/
 
 ---
 
-### PR #7: Message Status & Read Receipts ✅ UNIT TEST REQUIRED
+### PR #7: Message Status & Read Receipts
 **Branch:** `feature/message-status`  
-**Estimated Time:** 2 hours (+ 30 mins for tests)  
+**Status:** Implemented (status transitions + read receipts)  
 **Description:** Delivery states, read receipts, checkmarks
 
 **Tasks:**
@@ -390,9 +367,9 @@ Weftly/
 
 ---
 
-### PR #8: Group Chat ✅ INTEGRATION TEST REQUIRED
+### PR #8: Group Chat
 **Branch:** `feature/group-chat`  
-**Estimated Time:** 3-4 hours (+ 45 mins for tests)  
+**Status:** Implemented (group creation, roster header, delivery)  
 **Description:** Create groups, multi-participant messaging
 
 **Tasks:**
@@ -440,9 +417,9 @@ Weftly/
 
 ---
 
-### PR #9: Image Support ✅ UNIT TEST REQUIRED
+### PR #9: Image Support
 **Branch:** `feature/image-messaging`  
-**Estimated Time:** 2-3 hours (+ 30 mins for tests)  
+**Status:** Implemented (Firebase Storage + Nuke caching)  
 **Description:** Send/receive images, Firebase Storage integration
 
 **Tasks:**
@@ -489,9 +466,9 @@ Weftly/
 
 ---
 
-### PR #10: Offline Support & Message Queue ✅ UNIT TEST + INTEGRATION TEST REQUIRED
+### PR #10: Offline Support & Message Queue
 **Branch:** `feature/offline-support`  
-**Estimated Time:** 2-3 hours (+ 1 hour for tests)  
+**Status:** Implemented (queue + retry tested via Network Link Conditioner)  
 **Description:** Message queuing, network monitoring, offline resilience
 
 **Tasks:**
@@ -546,8 +523,8 @@ Weftly/
 
 ### PR #11: Push Notifications
 **Branch:** `feature/push-notifications`  
-**Estimated Time:** 2-3 hours  
-**Description:** Firebase Cloud Messaging, foreground/background notifications
+**Status:** Local notification proxy implemented; APNs delivery pending enrollment  
+**Description:** Firebase Cloud Messaging, foreground notifications
 
 **Tasks:**
 - [ ] Enable Firebase Cloud Messaging in Firebase Console
@@ -574,7 +551,7 @@ Weftly/
 
 ### PR #12: Polish & Bug Fixes
 **Branch:** `feature/mvp-polish`  
-**Estimated Time:** 2-3 hours  
+**Status:** Core polish completed (UI tweaks, error handling)  
 **Description:** Final testing, UI polish, error handling
 
 **Tasks:**
@@ -1322,28 +1299,28 @@ func testAsyncOperation() {
 Track your progress by checking off PRs as you complete them:
 
 **MVP Phase (24 Hours)**
-- [ ] PR #1: Project Setup ✅
-- [ ] PR #2: Authentication ✅
-- [ ] PR #3: User Profile ✅
-- [ ] PR #4: Chat List ✅
-- [ ] PR #5: Core Messaging ✅
-- [ ] PR #6: Real-Time Features ✅
-- [ ] PR #7: Message Status ✅
-- [ ] PR #8: Group Chat ✅
-- [ ] PR #9: Image Support ✅
-- [ ] PR #10: Offline Support ✅
-- [ ] PR #11: Push Notifications ✅
-- [ ] PR #12: Polish & Testing ✅
+- [x] PR #1: Project Setup ✅
+- [x] PR #2: Authentication ✅
+- [x] PR #3: User Profile ✅
+- [x] PR #4: Chat List ✅
+- [x] PR #5: Core Messaging ✅
+- [x] PR #6: Real-Time Features ✅
+- [x] PR #7: Message Status ✅
+- [x] PR #8: Group Chat ✅
+- [x] PR #9: Image Support ✅
+- [x] PR #10: Offline Support ✅
+- [x] PR #11: Push Notifications (local notification proxy implemented; APNs delivery pending)
+- [x] PR #12: Polish & Testing ✅
 
-**AI Phase (Days 2-7)**
-- [ ] PR #13: AI Infrastructure ✅
-- [ ] PR #14: AI Chat Interface ✅
-- [ ] PR #15: Calendar Extraction ✅
-- [ ] PR #16: Decision Summarization ✅
-- [ ] PR #17: Priority Detection ✅
-- [ ] PR #18: RSVP Tracking ✅
-- [ ] PR #19: Deadline Extraction ✅
-- [ ] PR #20: Proactive Assistant ✅
+**AI Phase (Days 2-7)** *(Post-MVP; not started)*
+- [ ] PR #13: AI Infrastructure
+- [ ] PR #14: AI Chat Interface
+- [ ] PR #15: Calendar Extraction
+- [ ] PR #16: Decision Summarization
+- [ ] PR #17: Priority Detection
+- [ ] PR #18: RSVP Tracking
+- [ ] PR #19: Deadline Extraction
+- [ ] PR #20: Proactive Assistant
 
 **Final Deliverables**
 - [ ] Demo video recorded ✅

@@ -78,25 +78,33 @@ struct UserSearchView: View {
         
         isSearching = true
         
-        Task {
+        Task { @MainActor in
             do {
                 let users = try await firestoreService.searchUsers(query: query)
+                print("🆔 Current user ID: \(authService.currentUser?.id ?? "nil")")
+                for user in users {
+                    print("🆔 Found user ID: \(user.id ?? "nil") - Name: \(user.displayName)")
+                }
                 // Filter out current user
-                searchResults = users.filter { $0.id != authService.currentUser?.id }
+                let filtered = users.filter { $0.id != authService.currentUser?.id }
+                print("📱 Updating UI with \(filtered.count) users")
+                searchResults = filtered
             } catch {
-                print("Error searching users: \(error.localizedDescription)")
+                print("❌ Error searching users: \(error.localizedDescription)")
             }
             isSearching = false
         }
     }
     
     private func startChat(with user: User) {
+        print("🚀 Starting chat with user: \(user.displayName) (ID: \(user.id ?? "nil"))")
         Task {
             do {
-                _ = try await viewModel.createDirectConversation(with: user)
+                let conversation = try await viewModel.createDirectConversation(with: user)
+                print("✅ Created/found conversation: \(conversation.id ?? "nil")")
                 dismiss()
             } catch {
-                print("Error creating conversation: \(error.localizedDescription)")
+                print("❌ Error creating conversation: \(error.localizedDescription)")
             }
         }
     }

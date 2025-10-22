@@ -12,7 +12,7 @@ import UIKit
 class StorageService {
     private let storage = Storage.storage()
     
-    func uploadImage(_ image: UIImage, path: String) async throws -> String {
+    func uploadImage(_ image: UIImage, path: String) async throws -> StorageUploadResult {
         // Compress image
         guard let imageData = compressImage(image) else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
@@ -22,20 +22,30 @@ class StorageService {
         let metadata = StorageMetadata()
         metadata.contentType = "image/jpeg"
         
-        let _ = try await storageRef.putDataAsync(imageData, metadata: metadata)
-        let downloadURL = try await storageRef.downloadURL()
-        
-        return downloadURL.absoluteString
+        do {
+            let _ = try await storageRef.putDataAsync(imageData, metadata: metadata)
+            let downloadURL = try await storageRef.downloadURL()
+            return StorageUploadResult(url: downloadURL.absoluteString, data: imageData)
+        } catch let error as NSError {
+            if error.domain == StorageErrorDomain,
+               let code = StorageErrorCode(rawValue: error.code),
+               code == .objectNotFound || code == .unauthorized {
+                throw NSError(domain: "StorageRules", code: error.code, userInfo: [NSLocalizedDescriptionKey: "Image storage failed. Check Firebase Storage rules or enable test mode."])
+            }
+            throw error
+        }
     }
     
     func uploadProfilePicture(_ image: UIImage, userId: String) async throws -> String {
         let path = "profile_pictures/\(userId)/\(UUID().uuidString).jpg"
-        return try await uploadImage(image, path: path)
+        let result = try await uploadImage(image, path: path)
+        return result.url
     }
     
     func uploadMessageImage(_ image: UIImage, conversationId: String) async throws -> String {
         let path = "message_images/\(conversationId)/\(UUID().uuidString).jpg"
-        return try await uploadImage(image, path: path)
+        let result = try await uploadImage(image, path: path)
+        return result.url
     }
     
     private func compressImage(_ image: UIImage) -> Data? {
@@ -56,6 +66,11 @@ class StorageService {
         
         // Compress with 0.7 quality
         return actualImage.jpegData(compressionQuality: 0.7)
+    }
+    
+    struct StorageUploadResult {
+        let url: String
+        let data: Data
     }
 }
 

@@ -8,6 +8,8 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
+import GoogleSignIn
+import Combine
 
 @MainActor
 class AuthService: ObservableObject {
@@ -16,13 +18,101 @@ class AuthService: ObservableObject {
     
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
+    private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
     
     init() {
-        // Check if user is already logged in
+        // Observe Firebase auth state
+        authStateListenerHandle = auth.addStateDidChangeListener { [weak self] _, user in
+            guard let self = self else { return }
+            Task { @MainActor in
+                if let user {
+                    await self.fetchCurrentUser(userId: user.uid)
+                    self.isAuthenticated = true
+                } else {
+                    self.currentUser = nil
+                    self.isAuthenticated = false
+                }
+            }
+        }
+        
+        // Initial fetch if already logged in
         if let firebaseUser = auth.currentUser {
             Task {
                 await fetchCurrentUser(userId: firebaseUser.uid)
+                self.isAuthenticated = true
             }
+        }
+    }
+    
+    deinit {
+        if let handle = authStateListenerHandle {
+            auth.removeStateDidChangeListener(handle)
+        }
+    }
+    
+    func signInWithGoogle() async throws -> User {
+        guard let clientID = auth.app?.options.clientID else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No client ID found"])
+        }
+        
+        let config = GIDConfiguration(clientID: clientID)
+        GIDSignIn.sharedInstance.configuration = config
+        
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first,
+              let rootViewController = window.rootViewController else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No root view controller"])
+        }
+        
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootViewController)
+        let user = result.user
+        
+        guard let idToken = user.idToken?.tokenString else {
+            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No ID token"])
+        }
+        
+        let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: user.accessToken.tokenString)
+        let authResult = try await auth.signIn(with: credential)
+        
+        // Check if user exists in Firestore
+        let userDoc = try await db.collection("users").document(authResult.user.uid).getDocument()
+        
+        if !userDoc.exists {
+            // Create new user
+            let newUser = User(
+                id: authResult.user.uid,
+                email: authResult.user.email ?? "",
+                displayName: authResult.user.displayName ?? "User",
+                profilePictureUrl: authResult.user.photoURL?.absoluteString,
+                isOnline: true,
+                lastSeen: Date()
+            )
+            
+            try await db.collection("users").document(authResult.user.uid).setData([
+                "email": newUser.email,
+                "displayName": newUser.displayName,
+                "profilePictureUrl": newUser.profilePictureUrl ?? "",
+                "isOnline": newUser.isOnline,
+                "lastSeen": Timestamp(date: newUser.lastSeen)
+            ])
+            
+            self.currentUser = newUser
+            self.isAuthenticated = true
+            return newUser
+        } else {
+            // Update online status
+            try await db.collection("users").document(authResult.user.uid).updateData([
+                "isOnline": true,
+                "lastSeen": Timestamp(date: Date())
+            ])
+            
+            await fetchCurrentUser(userId: authResult.user.uid)
+            
+            guard let currentUser = currentUser else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch user data"])
+            }
+            
+            return currentUser
         }
     }
     
@@ -88,7 +178,8 @@ class AuthService: ObservableObject {
     func fetchCurrentUser(userId: String) async {
         do {
             let document = try await db.collection("users").document(userId).getDocument()
-            if let user = try? document.data(as: User.self) {
+            if var user = try? document.data(as: User.self) {
+                if user.id == nil { user.id = document.documentID }
                 self.currentUser = user
                 self.isAuthenticated = true
             }

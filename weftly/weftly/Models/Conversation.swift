@@ -13,8 +13,8 @@ enum ConversationType: String, Codable {
     case group = "group"
 }
 
-struct Conversation: Identifiable, Codable {
-    @DocumentID var id: String?
+struct Conversation: Identifiable, Codable, Equatable {
+    var id: String?
     var type: ConversationType
     var participants: [String] // Array of user IDs
     var participantNames: [String: String] // userId: displayName mapping

@@ -7,8 +7,8 @@
 
 import Foundation
 import Network
+import Combine
 
-@MainActor
 class NetworkMonitor: ObservableObject {
     @Published var isConnected = true
     
@@ -17,7 +17,7 @@ class NetworkMonitor: ObservableObject {
     
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 self?.isConnected = path.status == .satisfied
             }
         }

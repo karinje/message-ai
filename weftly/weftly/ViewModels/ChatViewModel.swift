@@ -8,12 +8,14 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import Combine
 
 @MainActor
 class ChatViewModel: ObservableObject {
     @Published var messages: [Message] = []
     @Published var messageText = ""
     @Published var isLoading = false
+    @Published var pendingImageData: Data?
     
     let conversation: Conversation
     private let firestoreService = FirestoreService()
@@ -47,14 +49,16 @@ class ChatViewModel: ObservableObject {
     }
     
     func sendMessage() {
-        guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingImageData != nil else { return }
         guard let conversationId = conversation.id else { return }
         guard let currentUser = authService.currentUser else { return }
         guard let userId = currentUser.id else { return }
         
         let text = messageText
+        let imageData = pendingImageData
         messageText = ""
-        
+        pendingImageData = nil
+    
         let message = Message(
             id: UUID().uuidString,
             conversationId: conversationId,
@@ -64,7 +68,8 @@ class ChatViewModel: ObservableObject {
             text: text,
             timestamp: Date(),
             status: .sending,
-            readBy: [userId]
+            readBy: [userId],
+            localImageData: imageData
         )
         
         // Optimistic UI - add message immediately
@@ -74,7 +79,15 @@ class ChatViewModel: ObservableObject {
         Task {
             if networkMonitor.isConnected {
                 do {
-                    let sentMessage = try await firestoreService.sendMessage(message)
+                    var messageToSend = message
+
+                    if let imageData = imageData, let image = UIImage(data: imageData) {
+                        let upload = try await storageService.uploadImage(image, path: "message_images/\(conversationId)/\(UUID().uuidString).jpg")
+                        messageToSend.imageUrl = upload.url
+                        messageToSend.localImageData = nil
+                    }
+                    
+                    let sentMessage = try await firestoreService.sendMessage(messageToSend)
                     if let index = messages.firstIndex(where: { $0.id == message.id }) {
                         messages[index] = sentMessage
                     }
@@ -94,32 +107,8 @@ class ChatViewModel: ObservableObject {
     }
     
     func sendImage(_ image: UIImage) {
-        guard let conversationId = conversation.id else { return }
-        guard let currentUser = authService.currentUser else { return }
-        guard let userId = currentUser.id else { return }
-        
-        Task {
-            do {
-                let imageUrl = try await storageService.uploadMessageImage(image, conversationId: conversationId)
-                
-                let message = Message(
-                    id: UUID().uuidString,
-                    conversationId: conversationId,
-                    senderId: userId,
-                    senderName: currentUser.displayName,
-                    senderProfileUrl: currentUser.profilePictureUrl,
-                    text: "📷 Image",
-                    imageUrl: imageUrl,
-                    timestamp: Date(),
-                    status: .sent,
-                    readBy: [userId]
-                )
-                
-                _ = try await firestoreService.sendMessage(message)
-            } catch {
-                print("Error sending image: \(error.localizedDescription)")
-            }
-        }
+        guard let currentImageData = image.jpegData(compressionQuality: 0.7) else { return }
+        pendingImageData = currentImageData
     }
     
     func updateTypingStatus(isTyping: Bool) {
@@ -138,7 +127,9 @@ class ChatViewModel: ObservableObject {
             updateTypingStatus(isTyping: true)
             
             typingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-                self?.updateTypingStatus(isTyping: false)
+                Task { @MainActor [weak self] in
+                    self?.updateTypingStatus(isTyping: false)
+                }
             }
         } else {
             updateTypingStatus(isTyping: false)

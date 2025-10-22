@@ -23,9 +23,9 @@ class FirestoreService: ObservableObject {
         }
         
         // Check if conversation already exists
-        let existingConv = try await getExistingDirectConversation(userId1: currentUserId, userId2: otherUserId)
-        if let existing = existingConv {
-            return existing
+        if let existingConv = try await getExistingDirectConversation(userId1: currentUserId, userId2: otherUserId) {
+            print("🔁 Reusing existing direct conversation: \(existingConv.id ?? "unknown")")
+            return existingConv
         }
         
         let conversation = Conversation(
@@ -41,16 +41,22 @@ class FirestoreService: ObservableObject {
             ]
         )
         
-        let docRef = try await db.collection("conversations").addDocument(data: [
+        let conversationData: [String: Any] = [
             "type": conversation.type.rawValue,
             "participants": conversation.participants,
             "participantNames": conversation.participantNames,
             "participantProfileUrls": conversation.participantProfileUrls,
-            "unreadCount": [:]
-        ])
+            "unreadCount": [:],
+            "typingUsers": []
+        ]
+        
+        print("📝 Creating conversation with data: \(conversationData)")
+        
+        let docRef = try await db.collection("conversations").addDocument(data: conversationData)
         
         var newConv = conversation
         newConv.id = docRef.documentID
+        print("✅ Conversation created with ID: \(docRef.documentID)")
         return newConv
     }
     
@@ -62,6 +68,13 @@ class FirestoreService: ObservableObject {
         var participantIds = participants.compactMap { $0.id }
         if !participantIds.contains(currentUserId) {
             participantIds.append(currentUserId)
+        }
+        participantIds.sort()
+        
+        // Check if a group with same members already exists
+        if let existingGroup = try await getExistingGroupConversation(participantIds: participantIds) {
+            print("🔁 Reusing existing group conversation: \(existingGroup.id ?? "unknown")")
+            return existingGroup
         }
         
         var participantNames: [String: String] = [currentUserId: currentUser.displayName]
@@ -82,34 +95,54 @@ class FirestoreService: ObservableObject {
             groupName: name
         )
         
-        let docRef = try await db.collection("conversations").addDocument(data: [
+        let conversationData: [String: Any] = [
             "type": conversation.type.rawValue,
             "participants": conversation.participants,
             "participantNames": conversation.participantNames,
             "participantProfileUrls": conversation.participantProfileUrls,
             "groupName": name,
-            "unreadCount": [:]
-        ])
+            "unreadCount": [:],
+            "typingUsers": []
+        ]
+        
+        print("📝 Creating group conversation with data: \(conversationData)")
+        
+        let docRef = db.collection("conversations").document()
+        try await docRef.setData(conversationData)
         
         var newConv = conversation
         newConv.id = docRef.documentID
+        print("✅ Group conversation created with ID: \(docRef.documentID)")
         return newConv
     }
     
     func listenToConversations(userId: String, completion: @escaping ([Conversation]) -> Void) {
         let listener = db.collection("conversations")
             .whereField("participants", arrayContains: userId)
-            .order(by: "lastMessageTime", descending: true)
             .addSnapshotListener { snapshot, error in
                 guard let documents = snapshot?.documents else {
                     print("Error fetching conversations: \(error?.localizedDescription ?? "Unknown")")
                     return
                 }
                 
-                let conversations = documents.compactMap { doc -> Conversation? in
-                    try? doc.data(as: Conversation.self)
-                }
+                print("💬 Found \(documents.count) conversations for user")
                 
+                let conversations = documents.compactMap { doc -> Conversation? in
+                    var conv = try? doc.data(as: Conversation.self)
+                    if conv?.id == nil { conv?.id = doc.documentID }
+                    print("💬 Conversation: \(doc.documentID) - participants: \(conv?.participants ?? [])")
+                    
+                    // Filter out conversations with empty participants (broken data)
+                    if conv?.participants.isEmpty == true {
+                        print("⚠️ Skipping conversation with empty participants")
+                        return nil
+                    }
+                    
+                    return conv
+                }
+                .sorted { ($0.lastMessageTime ?? Date.distantPast) > ($1.lastMessageTime ?? Date.distantPast) }
+                
+                print("✅ Returning \(conversations.count) valid conversations")
                 completion(conversations)
             }
         
@@ -128,9 +161,31 @@ class FirestoreService: ObservableObject {
             .getDocuments()
         
         for document in snapshot.documents {
-            if let conversation = try? document.data(as: Conversation.self),
+            if var conversation = try? document.data(as: Conversation.self),
                conversation.participants.contains(userId2) {
+                if conversation.id == nil { conversation.id = document.documentID }
                 return conversation
+            }
+        }
+        
+        return nil
+    }
+    
+    private func getExistingGroupConversation(participantIds: [String]) async throws -> Conversation? {
+        guard let currentUserId = participantIds.first else { return nil }
+        
+        let snapshot = try await db.collection("conversations")
+            .whereField("type", isEqualTo: "group")
+            .whereField("participants", arrayContains: currentUserId)
+            .getDocuments()
+        
+        for document in snapshot.documents {
+            if var conversation = try? document.data(as: Conversation.self) {
+                if conversation.id == nil { conversation.id = document.documentID }
+                let existingParticipants = conversation.participants.sorted()
+                if existingParticipants == participantIds {
+                    return conversation
+                }
             }
         }
         
@@ -148,17 +203,23 @@ class FirestoreService: ObservableObject {
         messageToSend.id = conversationId
         messageToSend.status = .sent
         
-        let messageData: [String: Any] = [
+        var messageData: [String: Any] = [
             "conversationId": messageToSend.conversationId,
             "senderId": messageToSend.senderId,
             "senderName": messageToSend.senderName,
-            "senderProfileUrl": messageToSend.senderProfileUrl ?? "",
             "text": messageToSend.text,
-            "imageUrl": messageToSend.imageUrl ?? "",
             "timestamp": Timestamp(date: messageToSend.timestamp),
             "status": messageToSend.status.rawValue,
             "readBy": messageToSend.readBy
         ]
+        
+        // Only include optional fields if they have values
+        if let profileUrl = messageToSend.senderProfileUrl, !profileUrl.isEmpty {
+            messageData["senderProfileUrl"] = profileUrl
+        }
+        if let imageUrl = messageToSend.imageUrl, !imageUrl.isEmpty {
+            messageData["imageUrl"] = imageUrl
+        }
         
         try await db.collection("conversations")
             .document(messageToSend.conversationId)
@@ -190,7 +251,9 @@ class FirestoreService: ObservableObject {
                 }
                 
                 let messages = documents.compactMap { doc -> Message? in
-                    try? doc.data(as: Message.self)
+                    var msg = try? doc.data(as: Message.self)
+                    if msg?.id == nil { msg?.id = doc.documentID }
+                    return msg
                 }
                 
                 completion(messages)
@@ -234,15 +297,35 @@ class FirestoreService: ObservableObject {
     // MARK: - Users
     
     func searchUsers(query: String) async throws -> [User] {
+        // Fetch all users and filter locally for case-insensitive search
+        print("🔍 Searching for: \(query)")
+        
         let snapshot = try await db.collection("users")
-            .whereField("displayName", isGreaterThanOrEqualTo: query)
-            .whereField("displayName", isLessThan: query + "\u{f8ff}")
-            .limit(to: 20)
+            .limit(to: 100)
             .getDocuments()
         
-        return snapshot.documents.compactMap { doc in
-            try? doc.data(as: User.self)
+        print("📊 Found \(snapshot.documents.count) total users in database")
+        
+        let lowercaseQuery = query.lowercased()
+        
+        let results = snapshot.documents.compactMap { doc -> User? in
+            guard var user = try? doc.data(as: User.self) else {
+                print("⚠️ Failed to decode user from document: \(doc.documentID)")
+                return nil
+            }
+            // Ensure id is populated from documentID
+            if user.id == nil { user.id = doc.documentID }
+            print("👤 Checking user: \(user.displayName) (\(user.email))")
+            if user.displayName.lowercased().contains(lowercaseQuery) || 
+               user.email.lowercased().contains(lowercaseQuery) {
+                print("✅ Match found: \(user.displayName)")
+                return user
+            }
+            return nil
         }
+        
+        print("🎯 Returning \(results.count) matching users")
+        return results
     }
     
     func getUser(userId: String) async throws -> User? {

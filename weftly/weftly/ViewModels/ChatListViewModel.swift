@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import Combine
 
 @MainActor
 class ChatListViewModel: ObservableObject {
@@ -15,21 +16,31 @@ class ChatListViewModel: ObservableObject {
     
     private let firestoreService = FirestoreService()
     private let authService: AuthService
+    private var lastMessageTimestamps: [String: Date] = [:]
+    private var hasInitializedTimestamps = false
+    private var activeConversationId: String?
     
     init(authService: AuthService) {
         self.authService = authService
+    }
+    
+    func setActiveConversation(id: String?) {
+        activeConversationId = id
     }
     
     func startListening() {
         guard let userId = authService.currentUser?.id else { return }
         
         firestoreService.listenToConversations(userId: userId) { [weak self] conversations in
-            self?.conversations = conversations
+            guard let self else { return }
+            self.conversations = conversations
+            self.handleConversationUpdates(conversations: conversations)
         }
     }
     
     func stopListening() {
         firestoreService.removeConversationListener()
+        conversations = []
     }
     
     func createDirectConversation(with user: User) async throws -> Conversation {
@@ -46,6 +57,39 @@ class ChatListViewModel: ObservableObject {
         }
         
         return try await firestoreService.createGroupConversation(name: name, participants: participants, currentUser: currentUser)
+    }
+    
+    private func handleConversationUpdates(conversations: [Conversation]) {
+        guard let currentUserId = authService.currentUser?.id else { return }
+        
+        var updatedTimestamps: [String: Date] = [:]
+        var newMessages: [(Conversation, Date)] = []
+        
+        for conversation in conversations {
+            guard let convoId = conversation.id, let lastMessageTime = conversation.lastMessageTime else { continue }
+            updatedTimestamps[convoId] = lastMessageTime
+            
+            if let previousTime = lastMessageTimestamps[convoId] {
+                if lastMessageTime > previousTime,
+                   conversation.lastMessageSenderId != currentUserId,
+                   hasInitializedTimestamps,
+                   convoId != activeConversationId {
+                    newMessages.append((conversation, lastMessageTime))
+                }
+            }
+        }
+        
+        lastMessageTimestamps = updatedTimestamps
+        if !hasInitializedTimestamps {
+            hasInitializedTimestamps = true
+            return
+        }
+        
+        for (conversation, _) in newMessages {
+            let name = conversation.displayName(for: currentUserId)
+            let body = conversation.lastMessage ?? "New message"
+            NotificationService.shared.presentLocalNotification(title: name, body: body)
+        }
     }
 }
 
