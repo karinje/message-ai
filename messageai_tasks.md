@@ -523,29 +523,42 @@ Weftly/
 
 ### PR #11: Push Notifications
 **Branch:** `feature/push-notifications`  
-**Status:** Local notification proxy implemented; APNs delivery pending enrollment  
+**Status:** ✅ Implemented end-to-end (APNs + FCM)  
 **Description:** Firebase Cloud Messaging, foreground notifications
 
 **Tasks:**
-- [ ] Enable Firebase Cloud Messaging in Firebase Console
-- [ ] Create `NotificationService.swift` for FCM setup
-- [ ] Request notification permissions on app launch
-- [ ] Register device token with Firebase
-- [ ] Store FCM token in user's Firestore document
-- [ ] Implement foreground notification handler
-- [ ] Display notification banner when app is active
-- [ ] Add notification badge to app icon
-- [ ] Create Firebase Cloud Function to send notifications on new message (stretch goal)
-- [ ] Handle notification tap to open specific chat
-- [ ] Test: Send message while app is in foreground → notification appears
+- [x] Enable Firebase Cloud Messaging in Firebase Console
+- [x] Create `NotificationService.swift` for FCM setup
+- [x] Request notification permissions on app launch
+- [x] Register device token with Firebase
+- [x] Store FCM token in user's Firestore document
+- [x] Implement foreground notification handler (suppresses banner when active thread is open)
+- [x] Display notification banner when app is active for other conversations
+- [x] Add notification badge to app icon
+- [x] Create Firebase Cloud Function to send notifications on new message
+- [ ] Handle notification tap to open specific chat *(pending deep link wiring)*
+- [x] Test: Send message while app is active/in background → appropriate notification behavior
 
 **Files Created:**
 - `Services/NotificationService.swift`
+- `functions/index.js`
+- `functions/package.json`
+- `.firebaserc`
+- `firebase.json`
 
 **Files Modified:**
 - `MessageAIApp.swift` (register for notifications)
 - `Models/User.swift` (add fcmToken field)
-- `Services/UserService.swift` (save FCM token)
+- `Services/UserService.swift` *(deprecated in favor of AuthService token updates)*
+- `Services/AuthService.swift` (refresh token on auth changes)
+- `Services/NotificationService.swift` (APNs registration, active conversation tracking)
+- `ViewModels/ChatListViewModel.swift` (feeds active conversation ID)
+- `NotificationDelegate.swift` (foreground filtering logic)
+
+**Notes:**
+- Cloud Function `onMessageCreated` sends multicast FCM pushes with `conversationId` payload.
+- Foreground notifications are suppressed when user is already viewing the active thread; otherwise banners + sounds show.
+- Remaining work: deep-link into the correct chat on tap.
 
 ---
 

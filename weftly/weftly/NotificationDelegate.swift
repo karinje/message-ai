@@ -20,12 +20,19 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Me
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
+        let userInfo = notification.request.content.userInfo
+        let conversationId = userInfo["conversationId"] as? String
+        if NotificationService.shared.isConversationActive(conversationId) {
+            completionHandler([.sound])
+        } else {
+            completionHandler([.banner, .sound, .badge])
+        }
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
+        Messaging.messaging().appDidReceiveMessage(response.notification.request.content.userInfo)
         completionHandler()
     }
 }

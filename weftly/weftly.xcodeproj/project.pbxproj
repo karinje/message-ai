@@ -40,6 +40,7 @@
 		F08DE5262EA72002000ED503 /* weftly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = weftly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F08DE5332EA72005000ED503 /* weftlyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = weftlyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F08DE53D2EA72005000ED503 /* weftlyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = weftlyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0A1B0002EA9B23400000001 /* weftly/weftly.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = weftly/weftly.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -111,6 +112,7 @@
 		F08DE51D2EA72001000ED503 = {
 			isa = PBXGroup;
 			children = (
+				F0A1B0002EA9B23400000001 /* weftly/weftly.entitlements */,
 				F08DE5282EA72002000ED503 /* weftly */,
 				F08DE5362EA72005000ED503 /* weftlyTests */,
 				F08DE5402EA72005000ED503 /* weftlyUITests */,
@@ -444,8 +446,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = weftly/weftly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DQPFGD3Z7X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = weftly/Info.plist;
@@ -477,8 +481,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = weftly/weftly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DQPFGD3Z7X;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = weftly/Info.plist;

@@ -1,0 +1,23 @@
+{
+    "name": "weftly-functions",
+    "version": "1.0.0",
+    "engines": {
+        "node": "20"
+    },
+    "scripts": {
+        "build": "echo 'No build step'",
+        "lint": "eslint .",
+        "serve": "firebase emulators:start --only functions",
+        "shell": "firebase functions:shell",
+        "start": "npm run shell",
+        "deploy": "firebase deploy --only functions"
+    },
+    "dependencies": {
+        "firebase-admin": "^11.11.1",
+        "firebase-functions": "^4.8.0"
+    },
+    "devDependencies": {
+        "eslint": "^8.57.0",
+        "eslint-config-prettier": "^9.1.0"
+    }
+}

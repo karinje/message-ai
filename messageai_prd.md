@@ -393,7 +393,7 @@ The MVP checkpoint is **PASSED** when:
 6. ✅ Read receipts show correctly
 7. ✅ Images can be sent/received (Firebase Storage + Nuke caching)
 8. ✅ App handles force quit without losing messages
-9. ⚠️ Push notifications simulate foreground experience via local notifications (real APNs delivery pending developer enrollment)
+9. ✅ Push notifications delivered via APNs/FCM (foreground banners suppressed when viewing active thread)
 10. ✅ Online/offline status indicators work
 
 **Testing Checklist:**

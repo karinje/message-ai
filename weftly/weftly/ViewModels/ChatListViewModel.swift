@@ -26,6 +26,7 @@ class ChatListViewModel: ObservableObject {
     
     func setActiveConversation(id: String?) {
         activeConversationId = id
+        NotificationService.shared.setActiveConversation(id: id)
     }
     
     func startListening() {
@@ -84,11 +85,9 @@ class ChatListViewModel: ObservableObject {
             hasInitializedTimestamps = true
             return
         }
-        
-        for (conversation, _) in newMessages {
-            let name = conversation.displayName(for: currentUserId)
-            let body = conversation.lastMessage ?? "New message"
-            NotificationService.shared.presentLocalNotification(title: name, body: body)
+
+        for (_, _) in newMessages {
+            // Server-side push notifications handle delivery for background conversations
         }
     }
 }

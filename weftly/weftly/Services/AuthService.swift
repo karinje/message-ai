@@ -10,6 +10,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import GoogleSignIn
 import Combine
+import FirebaseMessaging
 
 @MainActor
 class AuthService: ObservableObject {
@@ -28,7 +29,9 @@ class AuthService: ObservableObject {
                 if let user {
                     await self.fetchCurrentUser(userId: user.uid)
                     self.isAuthenticated = true
+                    self.refreshFCMToken()
                 } else {
+                    NotificationService.shared.clearFCMToken()
                     self.currentUser = nil
                     self.isAuthenticated = false
                 }
@@ -40,6 +43,7 @@ class AuthService: ObservableObject {
             Task {
                 await fetchCurrentUser(userId: firebaseUser.uid)
                 self.isAuthenticated = true
+                self.refreshFCMToken()
             }
         }
     }
@@ -98,6 +102,7 @@ class AuthService: ObservableObject {
             
             self.currentUser = newUser
             self.isAuthenticated = true
+            self.refreshFCMToken()
             return newUser
         } else {
             // Update online status
@@ -107,6 +112,7 @@ class AuthService: ObservableObject {
             ])
             
             await fetchCurrentUser(userId: authResult.user.uid)
+            self.refreshFCMToken()
             
             guard let currentUser = currentUser else {
                 throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch user data"])
@@ -137,6 +143,7 @@ class AuthService: ObservableObject {
         
         self.currentUser = user
         self.isAuthenticated = true
+        self.refreshFCMToken()
         
         return user
     }
@@ -151,6 +158,7 @@ class AuthService: ObservableObject {
         ])
         
         await fetchCurrentUser(userId: authResult.user.uid)
+        self.refreshFCMToken()
         
         guard let user = currentUser else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch user data"])
@@ -171,6 +179,7 @@ class AuthService: ObservableObject {
         }
         
         try auth.signOut()
+        NotificationService.shared.clearFCMToken()
         self.currentUser = nil
         self.isAuthenticated = false
     }
@@ -182,6 +191,7 @@ class AuthService: ObservableObject {
                 if user.id == nil { user.id = document.documentID }
                 self.currentUser = user
                 self.isAuthenticated = true
+                self.refreshFCMToken()
             }
         } catch {
             print("Error fetching user: \(error.localizedDescription)")
@@ -209,6 +219,17 @@ class AuthService: ObservableObject {
         try? await db.collection("users").document(userId).updateData([
             "fcmToken": token
         ])
+    }
+
+    private func refreshFCMToken() {
+        Messaging.messaging().token { token, error in
+            if let error {
+                print("Failed to fetch FCM token: \(error.localizedDescription)")
+                return
+            }
+            guard let token else { return }
+            Task { await NotificationService.shared.updateFCMToken(token) }
+        }
     }
 }
 
