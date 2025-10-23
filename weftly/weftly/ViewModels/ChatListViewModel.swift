@@ -86,8 +86,15 @@ class ChatListViewModel: ObservableObject {
             return
         }
 
-        for (_, _) in newMessages {
-            // Server-side push notifications handle delivery for background conversations
+        for (conversation, _) in newMessages {
+            #if targetEnvironment(simulator)
+            let name = conversation.displayName(for: currentUserId)
+            let body = conversation.lastMessage ?? "New message"
+            let userInfo: [AnyHashable: Any] = [
+                "conversationId": conversation.id ?? ""
+            ]
+            NotificationService.shared.presentLocalDebugNotification(title: name, body: body, userInfo: userInfo)
+            #endif
         }
     }
 }

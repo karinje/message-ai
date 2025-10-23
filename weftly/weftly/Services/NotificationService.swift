@@ -2,14 +2,25 @@ import Foundation
 import UserNotifications
 import UIKit
 
+protocol NotificationPresenting {
+    func handleRemoteRegistrationIfNeeded()
+    func presentLocalNotification(title: String, body: String, userInfo: [AnyHashable: Any])
+}
+
 final class NotificationService: NSObject {
     static let shared = NotificationService()
     
     private weak var authService: AuthService?
     private var hasRequestedAuthorization = false
     private var activeConversationId: String?
+    private let presenter: NotificationPresenting
     
     private override init() {
+    #if targetEnvironment(simulator)
+        presenter = SimulatorNotificationPresenter()
+    #else
+        presenter = RemoteNotificationPresenter()
+    #endif
         super.init()
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(applicationDidBecomeActive),
@@ -59,7 +70,7 @@ final class NotificationService: NSObject {
     private func registerForRemoteNotifications() {
         DispatchQueue.main.async {
             print("📬 Registering with APNs")
-            UIApplication.shared.registerForRemoteNotifications()
+            self.presenter.handleRemoteRegistrationIfNeeded()
         }
     }
     
@@ -84,9 +95,41 @@ final class NotificationService: NSObject {
         guard let id, let activeConversationId else { return false }
         return activeConversationId == id
     }
+    
+    func presentLocalDebugNotification(title: String, body: String, userInfo: [AnyHashable: Any]) {
+        presenter.presentLocalNotification(title: title, body: body, userInfo: userInfo)
+    }
 
     @objc
     private func applicationDidBecomeActive() {
         UIApplication.shared.applicationIconBadgeNumber = 0
+    }
+}
+
+private final class RemoteNotificationPresenter: NotificationPresenting {
+    func handleRemoteRegistrationIfNeeded() {
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+    
+    func presentLocalNotification(title: String, body: String, userInfo: [AnyHashable: Any]) {
+        // No-op in production builds; real pushes handled via APNs
+    }
+}
+
+private final class SimulatorNotificationPresenter: NotificationPresenting {
+    func handleRemoteRegistrationIfNeeded() {
+        print("🧪 Simulator detected – skipping APNs registration")
+    }
+    
+    func presentLocalNotification(title: String, body: String, userInfo: [AnyHashable: Any]) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.userInfo = userInfo
+        let request = UNNotificationRequest(identifier: UUID().uuidString,
+                                            content: content,
+                                            trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 }
