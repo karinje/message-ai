@@ -407,6 +407,17 @@ The MVP checkpoint is **PASSED** when:
 
 ---
 
+## Push Notification Architecture
+
+| Scenario | Flow |
+| --- | --- |
+| **Physical device** | iOS registers with APNs → Firebase Messaging captures the APNs token and returns an FCM token → app stores FCM token in the user document → Cloud Function `onMessageCreated` (Firestore trigger) fans out multicast FCM message → FCM uses the uploaded APNs auth key to deliver to APNs → APNs shows the banner if app is backgrounded; when foregrounded we show a banner unless the active conversation matches `conversationId`. |
+| **Simulator (debug only)** | Firestore still receives the message and invokes `onMessageCreated` for real devices. In parallel, the client detects new messages via its live listener. When running on a simulator, `NotificationService` swaps in a `SimulatorNotificationPresenter` that raises a local `UNNotificationRequest` mirroring the payload (title/body/`conversationId`). This keeps foreground UX identical, but banners cannot appear if the simulator app is backgrounded/terminated (APNs limitation). |
+
+Both paths share the same suppression rule: if the user is already viewing the conversation (`conversationId` matches the active thread), the foreground banner is skipped and only a sound plays.
+
+---
+
 ## Post-MVP: AI Features Roadmap
 
 **Phase 2 (Days 2-4):** Implement 5 required AI features for Busy Parent persona

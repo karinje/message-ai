@@ -558,6 +558,7 @@ Weftly/
 **Notes:**
 - Cloud Function `onMessageCreated` sends multicast FCM pushes with `conversationId` payload.
 - Foreground notifications are suppressed when user is already viewing the active thread; otherwise banners + sounds show.
+- Simulator builds swap in a local presenter that fires `UNNotificationRequest` mirrors when new messages arrive (APNs still required for background/device testing).
 - Remaining work: deep-link into the correct chat on tap.
 
 ---

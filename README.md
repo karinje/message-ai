@@ -31,12 +31,13 @@ A real-time messaging app for busy parents and caregivers.
 - **Presence & Typing Indicators** – Online status and live typing feedback
 - **Offline Resilience** – SwiftData-backed message queue; validated via macOS Network Link Conditioner (100% packet-loss profile)
 - **Image Sharing** – Firebase Storage uploads with Nuke disk/memory caching, optional captions
-- **Local Notification Proxy** – Foreground banners triggered in-app; swap to APNs/FCM once Apple Developer enrollment is available
+- **Push Notifications** – APNs/FCM delivery on devices; simulator mirrors banners locally while app is foregrounded
 - **Custom Branding** – Weftly app icon and color palette
 
 ## Push Notification Note
-- The project requests notification permission and mirrors push UX using local notifications.
-- To enable real APNs delivery: enroll in Apple Developer Program, upload APNs auth key to Firebase Cloud Messaging, and run on a physical device.
+- Physical devices: app registers with APNs, stores the FCM token, and the Cloud Function `onMessageCreated` sends pushes via FCM → APNs.
+- Simulator: `NotificationService` swaps to a debug presenter that mirrors banners using local notifications (foreground only).
+- To enable real APNs delivery on device: enroll in Apple Developer Program, upload the APNs auth key to Firebase Cloud Messaging, and run on hardware.
 
 ## Documentation
 - [Product Requirements Document](messageai_prd.md)
