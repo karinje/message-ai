@@ -167,21 +167,28 @@ class AuthService: ObservableObject {
         return user
     }
     
-    func signOut() throws {
+    func signOut() async throws {
         guard let userId = auth.currentUser?.uid else { return }
         
-        // Update offline status
-        Task {
-            try? await db.collection("users").document(userId).updateData([
+        print("👋 Signing out user \(userId), setting offline...")
+        
+        // Update offline status BEFORE signing out
+        do {
+            try await db.collection("users").document(userId).updateData([
                 "isOnline": false,
                 "lastSeen": Timestamp(date: Date())
             ])
+            print("✅ Presence set to offline")
+        } catch {
+            print("⚠️ Failed to update offline status: \(error.localizedDescription)")
         }
         
         try auth.signOut()
         NotificationService.shared.clearFCMToken()
         self.currentUser = nil
         self.isAuthenticated = false
+        
+        print("✅ Sign out complete")
     }
     
     func fetchCurrentUser(userId: String) async {

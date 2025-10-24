@@ -155,8 +155,22 @@ struct ChatDetailView: View {
                 .background(Color(.systemBackground))
             }
         }
-        .navigationTitle(viewModel.currentConversation.displayName(for: authService.currentUser?.id ?? ""))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                if viewModel.currentConversation.type == .direct {
+                    // Show custom header with online/last seen for 1:1 chats
+                    ChatHeaderView(
+                        displayName: viewModel.currentConversation.displayName(for: authService.currentUser?.id ?? ""),
+                        otherUserId: otherParticipantId
+                    )
+                } else {
+                    // Show simple title for groups
+                    Text(viewModel.currentConversation.displayName(for: authService.currentUser?.id ?? ""))
+                        .font(.headline)
+                }
+            }
+        }
         .onAppear {
             viewModel.startListening()
             viewModel.retryPendingMessages()
@@ -192,6 +206,11 @@ struct ChatDetailView: View {
             return [currentName] + others
         }
         return others
+    }
+    
+    private var otherParticipantId: String? {
+        let currentUserId = authService.currentUser?.id ?? ""
+        return viewModel.currentConversation.participants.first(where: { $0 != currentUserId })
     }
 }
 

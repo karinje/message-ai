@@ -261,49 +261,79 @@ Weftly/
 
 ### PR #6: Real-Time Features (Typing, Presence)
 **Branch:** `feature/realtime-indicators`  
-**Status:** ✅ Complete (typing indicators + presence fixed)  
-**Description:** Typing indicators and online/offline status
+**Status:** ✅ Complete (typing indicators + presence working, cost-optimized)  
+**Description:** Typing indicators and online/offline status with action-based presence updates
 
-**FIXES IMPLEMENTED:**
-- ✅ **Typing indicators working** - Added conversation document listener to detect typing changes in real-time
-- ✅ **Presence indicator fixed** - Added app lifecycle handling + PresenceViewModel to check actual online status
+**FINAL IMPLEMENTATION:**
+- ✅ **Typing indicators working** - Real-time conversation document listener
+- ✅ **Presence system complete** - Cost-optimized, action-based updates (no heartbeat)
 
-**Tasks:**
-- [x] Add `isTyping` field to conversations in Firestore
-- [x] Add typing indicator logic to `ChatDetailViewModel.swift`
-- [x] **FIXED:** Typing event sends correctly (debounced to 2 second timer)
-- [x] **FIXED:** Added conversation document listener in ChatViewModel
-- [x] Create `TypingIndicatorView.swift` component
-- [x] Display typing indicator in `ChatDetailView.swift`
-- [x] Add `lastSeen` timestamp to User model
-- [x] **FIXED:** Added app lifecycle handling in weftlyApp.swift to update presence
-- [x] **FIXED:** Created AuthService.updatePresence() method
-- [x] Create `PresenceViewModel.swift` to check user online status
-- [x] Display online status in chat list (green dot only when truly online)
-- [x] **FIXED:** Online status checks both isOnline flag and lastSeen < 5 mins
-- [x] Ready for testing on two devices
+**Online Presence & Last Seen System (Cost-Optimized, WhatsApp-Style):**
 
-**Implementation Details:**
-- Added `listenToConversation()` to FirestoreService for real-time typing updates
-- ChatViewModel now listens to conversation document changes
-- App lifecycle (active/background) updates user presence in Firestore
-- PresenceViewModel listens to individual user documents for online status
-- ConversationRow dynamically shows green dot based on actual online state
+**Where "Last Seen" is Displayed:**
+1. ✅ **Chat Header (1:1)** - `ChatHeaderView` shows below contact name:
+   - "online" (if active within 10 min)
+   - "last seen today at 3:45 PM" / "yesterday at..." / "Monday at..." / date format
+2. ✅ **Chat List** - Green dot indicator (`PresenceViewModel` in `ConversationRow`)
+3. 🔜 **Contact Info** - Future PR
+4. 🔜 **Group Member Tap** - Future PR
+
+**Data Model (User-Level, Global):**
+```
+users/{userId}/
+  - isOnline: boolean      // Set by explicit app actions
+  - lastSeen: timestamp    // Global activity time (NOT per-chat)
+```
+
+**Update Triggers (8 actions, NO heartbeat):**
+1. Sign up → `isOnline: true, lastSeen: now` (`AuthService.signUp`)
+2. Sign in → `isOnline: true, lastSeen: now` (`AuthService.signIn`)
+3. App launch (logged in) → `isOnline: true, lastSeen: now` (`weftlyApp.swift .task{}`)
+4. App foreground → `isOnline: true, lastSeen: now` (`weftlyApp.swift .active`)
+5. Open chat → `isOnline: true, lastSeen: now` (`ChatViewModel.startListening`)
+6. Send message → `isOnline: true, lastSeen: now` (`ChatViewModel.sendMessage`)
+7. App background → `isOnline: false, lastSeen: now` (`weftlyApp.swift .background`)
+8. Sign out → `isOnline: false, lastSeen: now` (`AuthService.signOut`)
+
+**Calculation Logic (`PresenceViewModel`):**
+```swift
+if (timeSinceLastSeen > 600) {     // 10 minutes
+    calculatedOnline = false        // Timeout (force quit/crash)
+} else if (isOnline == false) {
+    calculatedOnline = false        // Explicit action (immediate)
+} else {
+    calculatedOnline = true         // Active user
+}
+```
+
+**Scenario Coverage:**
+- Normal use: Updates on every action → shows online ✅
+- Silent reading 8 min: No updates, but < 10 min → still online ✅
+- Silent reading 12 min: No updates, > 10 min → timeout offline ✅
+- Background: `isOnline=false` → immediate offline ✅
+- Sign out: `isOnline=false` → immediate offline ✅
+- Force quit: Stuck `isOnline=true` → timeout after 10 min ✅
+- Network drop: No updates → timeout after 10 min ✅
+
+**Cost Efficiency:**
+- ~5-10 Firestore writes per active user per hour
+- ~80-90% reduction vs heartbeat approach (30+ writes/hour)
+- Demo-friendly cost structure
 
 **Files Created:**
 - `Views/Chat/TypingIndicatorView.swift`
 - `Views/Components/OnlineStatusView.swift`
-
-**Files Created:**
-- `ViewModels/PresenceViewModel.swift`
+- `Views/Components/ChatHeaderView.swift` ← **NEW: Last seen display**
+- `ViewModels/PresenceViewModel.swift` (enhanced with `@Published var lastSeen`)
 
 **Files Modified:**
-- `ViewModels/ChatViewModel.swift` (renamed from ChatDetailViewModel, added conversation listener)
-- `Services/FirestoreService.swift` (added listenToConversation method)
-- `Services/AuthService.swift` (added updatePresence method)
-- `weftlyApp.swift` (added scene phase monitoring)
-- `Views/Chat/ChatDetailView.swift` (use currentConversation for dynamic updates)
-- `Views/Chat/ChatListView.swift` (ConversationRow uses PresenceViewModel)
+- `ViewModels/ChatViewModel.swift` (conversation listener, no heartbeat)
+- `ViewModels/PresenceViewModel.swift` (added lastSeen property)
+- `Services/FirestoreService.swift` (listenToConversation)
+- `Services/AuthService.swift` (updatePresence, async signOut)
+- `weftlyApp.swift` (scene phase + launch presence)
+- `Views/Chat/ChatDetailView.swift` (ChatHeaderView in toolbar)
+- `Views/Chat/ChatListView.swift` (PresenceViewModel integration)
 
 ---
 

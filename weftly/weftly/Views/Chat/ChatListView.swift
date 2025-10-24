@@ -33,7 +33,7 @@ struct ChatListView: View {
                     Menu {
                         Button {
                             Task {
-                                try? authService.signOut()
+                                try? await authService.signOut()
                             }
                         } label: {
                             Label("Sign Out", systemImage: "arrow.right.square")
@@ -115,6 +115,9 @@ struct ConversationRow: View {
         let otherUserId = conversation.type == .direct 
             ? conversation.participants.first(where: { $0 != currentUserId }) 
             : nil
+        
+        print("💬 ConversationRow init: convId=\(conversation.id ?? "nil"), participants=\(conversation.participants), current=\(currentUserId), other=\(otherUserId ?? "nil")")
+        
         _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId))
     }
     

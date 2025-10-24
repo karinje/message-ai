@@ -36,6 +36,12 @@ class ChatViewModel: ObservableObject {
     func startListening() {
         guard let conversationId = currentConversation.id else { return }
         
+        // Update presence when user opens chat (viewing messages is activity)
+        // No periodic heartbeat - only update on explicit actions to reduce Firestore writes
+        Task {
+            await authService.updatePresence(isOnline: true)
+        }
+        
         // Listen to messages
         firestoreService.listenToMessages(conversationId: conversationId) { [weak self] messages in
             self?.messages = messages
@@ -62,6 +68,11 @@ class ChatViewModel: ObservableObject {
         guard let conversationId = currentConversation.id else { return }
         guard let currentUser = authService.currentUser else { return }
         guard let userId = currentUser.id else { return }
+        
+        // Update presence to keep lastSeen fresh while actively messaging
+        Task {
+            await authService.updatePresence(isOnline: true)
+        }
         
         let text = messageText
         let imageData = pendingImageData
@@ -222,5 +233,6 @@ class ChatViewModel: ObservableObject {
             return "Multiple people are typing..."
         }
     }
+    
 }
 

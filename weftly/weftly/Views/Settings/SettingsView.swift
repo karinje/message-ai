@@ -117,7 +117,7 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) { }
                 Button("Sign Out", role: .destructive) {
                     Task {
-                        try? authService.signOut()
+                        try? await authService.signOut()
                     }
                 }
             } message: {

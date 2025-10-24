@@ -58,8 +58,8 @@ MessageAI (Weftly) is a cross-platform messaging app designed for busy parents w
 - Group chat (3+ participants)
 - Message persistence with SwiftData
 - Optimistic UI updates
-- ⚠️ **Online/offline presence indicators** (implemented but needs debugging - stuck on green)
-- ⚠️ **Typing indicators** (component exists but not working - needs debugging)
+- ✅ **Online/offline presence indicators** - Action-based updates with 10-minute timeout
+- ✅ **Typing indicators** - Real-time conversation listener implemented
 - Message status (sending → sent → delivered → read)
 - Read receipts
 - Image sharing via Firebase Storage
@@ -67,9 +67,61 @@ MessageAI (Weftly) is a cross-platform messaging app designed for busy parents w
 - Push notifications (FCM + APNs)
 - Profile pictures and display names
 
-**Known Issues to Fix:**
-1. **Typing indicators not working** - UI component exists but doesn't show when other user types. Need to debug Firestore listener and typing event sends.
-2. **Presence indicator always green** - Online/offline status not updating correctly. Need to debug lastSeen timestamp updates and comparison logic.
+**Online Presence & Last Seen System (Cost-Optimized, WhatsApp-Style):**
+
+**Where "Last Seen" is Displayed:**
+1. ✅ **Chat Header (1:1 conversations)** - Below contact name shows:
+   - "online" (if user active within last 10 minutes)
+   - "last seen today at 3:45 PM" (if offline, seen today)
+   - "last seen yesterday at 2:30 PM" (if offline, seen yesterday)
+   - "last seen Monday at 4:15 PM" (if offline, seen this week)
+   - "last seen 10/20/24 at 8:00 PM" (if older)
+2. ✅ **Chat List** - Green dot indicator when online
+3. 🔜 **Contact Info Screen** - Full last seen details (future PR)
+4. 🔜 **Group Member Tap** - Individual member presence (future PR)
+
+**Data Storage (User-Level, Global):**
+```
+users/{userId}/
+  - isOnline: boolean      // Explicitly set by app actions
+  - lastSeen: timestamp    // Last activity time, global across all chats
+```
+
+**`lastSeen` Update Triggers (8 explicit actions, NO automatic heartbeat):**
+1. **Sign up** → `isOnline: true, lastSeen: now`
+2. **Sign in** → `isOnline: true, lastSeen: now`
+3. **App launch (logged in)** → `isOnline: true, lastSeen: now`
+4. **App foreground** → `isOnline: true, lastSeen: now`
+5. **Open any chat** → `isOnline: true, lastSeen: now`
+6. **Send message** → `isOnline: true, lastSeen: now`
+7. **App background** → `isOnline: false, lastSeen: now`
+8. **Sign out** → `isOnline: false, lastSeen: now`
+
+**Online Status Calculation (Hybrid Logic in `PresenceViewModel`):**
+```swift
+if (timeSinceLastSeen > 600 seconds) {  // 10 minutes
+    calculatedOnline = false   // Timeout - handles force quit/crash
+} else if (isOnline == false) {
+    calculatedOnline = false   // Explicit signout/background - immediate offline
+} else {
+    calculatedOnline = true    // isOnline=true AND recent activity - show online
+}
+```
+
+**Behavior Across Scenarios:**
+- **Normal use**: User opens chat → lastSeen updates → shows online
+- **Silent reading 8 min**: User reading messages → no updates → still shows online (< 10 min)
+- **Silent reading 12 min**: User reading messages → no updates → shows offline (> 10 min timeout)
+- **App background**: Immediate offline status, lastSeen updated
+- **Sign out**: Immediate offline status, lastSeen updated
+- **Force quit/crash**: Stays online for up to 10 minutes, then timeout shows offline
+- **Network drop**: No updates sent → timeout after 10 minutes shows offline
+
+**Key Design Decisions:**
+- ✅ **User-level (global)**: Activity in ANY chat updates global lastSeen visible to ALL contacts
+- ✅ **No heartbeat timer**: Saves ~80-90% Firestore writes vs polling approach
+- ✅ **10-minute grace period**: Balances UX (users stay online while reading) with accuracy
+- ✅ **Cost efficiency**: ~5-10 Firestore writes per active user per hour (demo-friendly)
 
 ### 🎯 Enhanced Features (This Phase)
 
