@@ -105,6 +105,18 @@ struct ChatListView: View {
 struct ConversationRow: View {
     let conversation: Conversation
     let currentUserId: String
+    @StateObject private var presenceViewModel: PresenceViewModel
+    
+    init(conversation: Conversation, currentUserId: String) {
+        self.conversation = conversation
+        self.currentUserId = currentUserId
+        
+        // For direct chats, get the other user's ID
+        let otherUserId = conversation.type == .direct 
+            ? conversation.participants.first(where: { $0 != currentUserId }) 
+            : nil
+        _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId))
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -120,7 +132,7 @@ struct ConversationRow: View {
                     )
                 
                 // Online indicator for direct chats
-                if conversation.type == .direct {
+                if conversation.type == .direct && presenceViewModel.isOnline {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 12, height: 12)

@@ -149,9 +149,40 @@ class FirestoreService: ObservableObject {
         conversationListeners["main"] = listener
     }
     
-    func removeConversationListener() {
-        conversationListeners["main"]?.remove()
-        conversationListeners.removeValue(forKey: "main")
+    func listenToConversation(conversationId: String, completion: @escaping (Conversation?) -> Void) {
+        let listener = db.collection("conversations")
+            .document(conversationId)
+            .addSnapshotListener { snapshot, error in
+                guard let snapshot = snapshot else {
+                    print("❌ Error fetching conversation: \(error?.localizedDescription ?? "Unknown")")
+                    return
+                }
+                
+                var conversation = try? snapshot.data(as: Conversation.self)
+                if conversation?.id == nil {
+                    conversation?.id = snapshot.documentID
+                }
+                
+                if let typingUsers = conversation?.typingUsers {
+                    print("🔤 Conversation updated - typing users: \(typingUsers)")
+                }
+                
+                completion(conversation)
+            }
+        
+        conversationListeners["detail_\(conversationId)"] = listener
+    }
+    
+    func removeConversationListener(conversationId: String? = nil) {
+        if let conversationId = conversationId {
+            // Remove specific conversation listener
+            conversationListeners["detail_\(conversationId)"]?.remove()
+            conversationListeners.removeValue(forKey: "detail_\(conversationId)")
+        } else {
+            // Remove main conversations list listener
+            conversationListeners["main"]?.remove()
+            conversationListeners.removeValue(forKey: "main")
+        }
     }
     
     private func getExistingDirectConversation(userId1: String, userId2: String) async throws -> Conversation? {

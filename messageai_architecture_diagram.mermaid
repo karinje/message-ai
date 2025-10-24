@@ -1,11 +1,33 @@
 graph TB
     subgraph "iOS App - Swift/SwiftUI"
         subgraph "Presentation Layer"
-            V1[ChatListView]
-            V2[ChatDetailView]
-            V3[ProfileView]
-            V4[GroupChatView]
-            V5[AIChatView]
+            subgraph "Chat Views"
+                V1[ChatListView]
+                V2[ChatDetailView]
+                V4[GroupChatView]
+                V17[NewChatView]
+            end
+            
+            subgraph "Settings Views"
+                V10[SettingsView]
+                V3[ProfileView]
+                V11[ListsView]
+                V12[CreateListView]
+                V13[PrivacyView]
+                V14[BroadcastView]
+                V15[CreateBroadcastListView]
+                V16[EditAboutView]
+            end
+            
+            subgraph "AI Views"
+                V5[AIChatView]
+            end
+            
+            subgraph "Component Views"
+                V18[CameraAccessSheet]
+                V19[ContactPermissionView]
+                V20[ImagePickerView]
+            end
         end
         
         subgraph "ViewModel Layer"
@@ -14,6 +36,10 @@ graph TB
             VM3[ChatDetailViewModel]
             VM4[ProfileViewModel]
             VM5[AIViewModel]
+            VM6[ListsViewModel]
+            VM7[PrivacyViewModel]
+            VM8[BroadcastViewModel]
+            VM9[ContactsViewModel]
         end
         
         subgraph "Service Layer"
@@ -24,6 +50,7 @@ graph TB
             S5[AIService]
             S6[NotificationService]
             S7[NetworkMonitor]
+            S8[ContactsService]
         end
         
         subgraph "Local Storage"
@@ -33,9 +60,14 @@ graph TB
         end
         
         subgraph "Models"
-            M1[User]
+            M1[User + PrivacySettings]
             M2[Message]
             M3[Conversation]
+            M4[ConversationList]
+            M5[BroadcastList]
+            M6[CalendarEvent]
+            M7[Deadline]
+            M8[RSVPEvent]
         end
     end
     
@@ -47,6 +79,15 @@ graph TB
             FB4[Cloud Messaging FCM]
         end
         
+        subgraph "Firestore Collections"
+            FC1[users/{userId}]
+            FC2[conversations/{convId}]
+            FC3[messages subcollection]
+            FC4[lists/{listId}]
+            FC5[broadcastLists/{listId}]
+            FC6[rsvpEvents subcollection]
+        end
+        
         subgraph "Cloud Functions - Node.js"
             CF1[AI Chat Endpoint]
             CF2[Calendar Extractor]
@@ -55,6 +96,7 @@ graph TB
             CF5[RSVP Tracker]
             CF6[Deadline Extractor]
             CF7[Proactive Assistant]
+            CF8[onMessageCreated Push]
         end
     end
     
@@ -66,6 +108,9 @@ graph TB
     subgraph "Apple Services"
         AP1[APNs Push Notifications]
         AP2[EventKit Calendar]
+        AP3[Contacts Framework]
+        AP4[PhotosUI]
+        AP5[Camera AVFoundation]
     end
     
     %% View to ViewModel connections
@@ -74,16 +119,34 @@ graph TB
     V3 --> VM4
     V4 --> VM3
     V5 --> VM5
+    V10 --> VM4
+    V10 --> VM6
+    V10 --> VM7
+    V10 --> VM8
+    V11 --> VM6
+    V12 --> VM6
+    V13 --> VM7
+    V14 --> VM8
+    V15 --> VM8
+    V17 --> VM9
+    V17 --> VM2
     
     %% ViewModel to Service connections
     VM1 --> S1
     VM2 --> S2
     VM2 --> S3
+    VM2 --> S8
     VM3 --> S2
     VM3 --> S4
     VM3 --> S7
     VM4 --> S3
+    VM4 --> S4
     VM5 --> S5
+    VM6 --> S2
+    VM7 --> S3
+    VM8 --> S2
+    VM9 --> S8
+    VM9 --> S3
     
     %% Service to Firebase connections
     S1 <-->|Auth API| FB2
@@ -93,6 +156,14 @@ graph TB
     S5 -->|HTTPS Request| CF1
     S6 <-->|Device Tokens| FB4
     
+    %% Firestore structure
+    FB1 --> FC1
+    FB1 --> FC2
+    FC1 --> FC4
+    FC1 --> FC5
+    FC2 --> FC3
+    FC2 --> FC6
+    
     %% Service to Local Storage
     S2 --> L1
     S2 --> L3
@@ -100,6 +171,9 @@ graph TB
     
     %% Network Monitor
     S7 -.->|Online/Offline Status| S2
+    
+    %% Contacts Service to Apple
+    S8 <-->|Read Contacts| AP3
     
     %% Cloud Functions to AI
     CF1 --> AI1
@@ -121,20 +195,37 @@ graph TB
     CF5 --> FB1
     CF6 --> FB1
     CF7 --> FB1
+    CF8 --> FB1
     
     %% FCM to APNs
     FB4 -->|Push Notifications| AP1
     AP1 -.->|Notification Delivery| V2
+    CF8 -->|Trigger on new message| FB4
     
     %% Proactive Assistant to Calendar
     CF7 --> AP2
     S5 --> AP2
+    
+    %% Camera and Photos
+    V18 --> AP5
+    V18 --> AP4
+    V20 --> AP4
     
     %% Models used by Services
     M1 -.-> S1
     M1 -.-> S3
     M2 -.-> S2
     M3 -.-> S2
+    M4 -.-> S2
+    M5 -.-> S2
+    M6 -.-> S5
+    M7 -.-> S5
+    M8 -.-> S5
+    
+    %% Privacy Settings Flow
+    M1 -.->|privacySettings| S3
+    S3 -.->|Check settings before showing status| VM2
+    S3 -.->|Check settings before sending receipts| S2
     
     %% Styling
     classDef viewClass fill:#e1f5ff,stroke:#0288d1,stroke-width:2px
@@ -144,11 +235,13 @@ graph TB
     classDef firebaseClass fill:#ffebee,stroke:#c62828,stroke-width:2px
     classDef aiClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
     classDef appleClass fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    classDef modelClass fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     
-    class V1,V2,V3,V4,V5 viewClass
-    class VM1,VM2,VM3,VM4,VM5 vmClass
-    class S1,S2,S3,S4,S5,S6,S7 serviceClass
+    class V1,V2,V3,V4,V5,V10,V11,V12,V13,V14,V15,V16,V17,V18,V19,V20 viewClass
+    class VM1,VM2,VM3,VM4,VM5,VM6,VM7,VM8,VM9 vmClass
+    class S1,S2,S3,S4,S5,S6,S7,S8 serviceClass
     class L1,L2,L3 storageClass
-    class FB1,FB2,FB3,FB4,CF1,CF2,CF3,CF4,CF5,CF6,CF7 firebaseClass
+    class FB1,FB2,FB3,FB4,CF1,CF2,CF3,CF4,CF5,CF6,CF7,CF8,FC1,FC2,FC3,FC4,FC5,FC6 firebaseClass
     class AI1,AI2 aiClass
-    class AP1,AP2 appleClass
+    class AP1,AP2,AP3,AP4,AP5 appleClass
+    class M1,M2,M3,M4,M5,M6,M7,M8 modelClass

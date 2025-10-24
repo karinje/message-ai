@@ -14,7 +14,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if authService.isAuthenticated {
-                ChatListView(authService: authService)
+                MainTabView(authService: authService)
             } else {
                 LoginView(isAuthenticated: $isAuthenticated)
             }

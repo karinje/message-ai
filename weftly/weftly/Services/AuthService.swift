@@ -220,6 +220,28 @@ class AuthService: ObservableObject {
             "fcmToken": token
         ])
     }
+    
+    func updatePresence(isOnline: Bool) async {
+        guard let userId = currentUser?.id else { return }
+        
+        print("👤 Updating presence for user \(userId): isOnline=\(isOnline)")
+        
+        do {
+            try await db.collection("users").document(userId).updateData([
+                "isOnline": isOnline,
+                "lastSeen": Timestamp(date: Date())
+            ])
+            
+            // Update local user object
+            if var user = currentUser {
+                user.isOnline = isOnline
+                user.lastSeen = Date()
+                self.currentUser = user
+            }
+        } catch {
+            print("❌ Error updating presence: \(error.localizedDescription)")
+        }
+    }
 
     private func refreshFCMToken() {
         Messaging.messaging().token { token, error in

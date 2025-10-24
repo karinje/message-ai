@@ -40,9 +40,9 @@ struct ChatDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            if conversation.type == .group {
+            if viewModel.currentConversation.type == .group {
                 GroupInfoHeader(
-                    title: conversation.groupName ?? "Group",
+                    title: viewModel.currentConversation.groupName ?? "Group",
                     members: participantNames,
                     currentUserName: authService.currentUser?.displayName
                 )
@@ -155,13 +155,13 @@ struct ChatDetailView: View {
                 .background(Color(.systemBackground))
             }
         }
-        .navigationTitle(conversation.displayName(for: authService.currentUser?.id ?? ""))
+        .navigationTitle(viewModel.currentConversation.displayName(for: authService.currentUser?.id ?? ""))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             viewModel.startListening()
             viewModel.retryPendingMessages()
             if let listViewModel = chatListViewModel {
-                listViewModel.setActiveConversation(id: conversation.id)
+                listViewModel.setActiveConversation(id: viewModel.currentConversation.id)
             }
         }
         .onDisappear {
@@ -185,7 +185,7 @@ struct ChatDetailView: View {
     
     private var participantNames: [String] {
         let currentUserId = authService.currentUser?.id ?? ""
-        let others = conversation.participantNames.filter { $0.key != currentUserId }
+        let others = viewModel.currentConversation.participantNames.filter { $0.key != currentUserId }
             .sorted { $0.value.lowercased() < $1.value.lowercased() }
             .map { $0.value }
         if let currentName = authService.currentUser?.displayName {

@@ -16,8 +16,8 @@ class ChatViewModel: ObservableObject {
     @Published var messageText = ""
     @Published var isLoading = false
     @Published var pendingImageData: Data?
+    @Published var currentConversation: Conversation
     
-    let conversation: Conversation
     private let firestoreService = FirestoreService()
     private let storageService = StorageService()
     private let authService: AuthService
@@ -27,30 +27,39 @@ class ChatViewModel: ObservableObject {
     private var typingTimer: Timer?
     
     init(conversation: Conversation, authService: AuthService, networkMonitor: NetworkMonitor, modelContext: ModelContext) {
-        self.conversation = conversation
+        self.currentConversation = conversation
         self.authService = authService
         self.networkMonitor = networkMonitor
         self.modelContext = modelContext
     }
     
     func startListening() {
-        guard let conversationId = conversation.id else { return }
+        guard let conversationId = currentConversation.id else { return }
         
+        // Listen to messages
         firestoreService.listenToMessages(conversationId: conversationId) { [weak self] messages in
             self?.messages = messages
             self?.markMessagesAsRead()
         }
+        
+        // Listen to conversation updates (for typing indicators)
+        firestoreService.listenToConversation(conversationId: conversationId) { [weak self] conversation in
+            if let conversation = conversation {
+                self?.currentConversation = conversation
+            }
+        }
     }
     
     func stopListening() {
-        guard let conversationId = conversation.id else { return }
+        guard let conversationId = currentConversation.id else { return }
         firestoreService.removeMessageListener(conversationId: conversationId)
+        firestoreService.removeConversationListener(conversationId: conversationId)
         updateTypingStatus(isTyping: false)
     }
     
     func sendMessage() {
         guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingImageData != nil else { return }
-        guard let conversationId = conversation.id else { return }
+        guard let conversationId = currentConversation.id else { return }
         guard let currentUser = authService.currentUser else { return }
         guard let userId = currentUser.id else { return }
         
@@ -112,11 +121,16 @@ class ChatViewModel: ObservableObject {
     }
     
     func updateTypingStatus(isTyping: Bool) {
-        guard let conversationId = conversation.id else { return }
+        guard let conversationId = currentConversation.id else { return }
         guard let userId = authService.currentUser?.id else { return }
         
         Task {
-            try? await firestoreService.updateTypingStatus(conversationId: conversationId, userId: userId, isTyping: isTyping)
+            do {
+                try await firestoreService.updateTypingStatus(conversationId: conversationId, userId: userId, isTyping: isTyping)
+                print("🔤 Typing status updated: \(isTyping) for user \(userId)")
+            } catch {
+                print("❌ Error updating typing status: \(error.localizedDescription)")
+            }
         }
     }
     
@@ -137,7 +151,7 @@ class ChatViewModel: ObservableObject {
     }
     
     private func markMessagesAsRead() {
-        guard let conversationId = conversation.id else { return }
+        guard let conversationId = currentConversation.id else { return }
         guard let userId = authService.currentUser?.id else { return }
         
         Task {
@@ -161,7 +175,7 @@ class ChatViewModel: ObservableObject {
     
     func retryPendingMessages() {
         let descriptor = FetchDescriptor<PendingMessage>(
-            predicate: #Predicate { $0.conversationId == conversation.id ?? "" }
+            predicate: #Predicate { $0.conversationId == currentConversation.id ?? "" }
         )
         
         guard let pendingMessages = try? modelContext.fetch(descriptor) else { return }
@@ -194,10 +208,12 @@ class ChatViewModel: ObservableObject {
     }
     
     var typingUsersText: String? {
-        let typingUserIds = conversation.typingUsers.filter { $0 != authService.currentUser?.id }
+        let typingUserIds = currentConversation.typingUsers.filter { $0 != authService.currentUser?.id }
         guard !typingUserIds.isEmpty else { return nil }
         
-        let names = typingUserIds.compactMap { conversation.participantNames[$0] }
+        print("🔤 Typing users detected: \(typingUserIds)")
+        
+        let names = typingUserIds.compactMap { currentConversation.participantNames[$0] }
         if names.count == 1 {
             return "\(names[0]) is typing..."
         } else if names.count == 2 {
