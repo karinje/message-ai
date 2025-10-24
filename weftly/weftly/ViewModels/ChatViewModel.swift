@@ -35,6 +35,7 @@ class ChatViewModel: ObservableObject {
     
     func startListening() {
         guard let conversationId = currentConversation.id else { return }
+        guard let userId = authService.currentUser?.id else { return }
         
         // Update presence when user opens chat (viewing messages is activity)
         // No periodic heartbeat - only update on explicit actions to reduce Firestore writes
@@ -42,17 +43,97 @@ class ChatViewModel: ObservableObject {
             await authService.updatePresence(isOnline: true)
         }
         
-        // Listen to messages
-        firestoreService.listenToMessages(conversationId: conversationId) { [weak self] messages in
-            self?.messages = messages
-            self?.markMessagesAsRead()
+        // 1. LOAD FROM CACHE FIRST (instant, works offline)
+        loadMessagesFromCache()
+        
+        // 2. UPDATE LOCAL READ STATE (no Firestore write!)
+        do {
+            try MessageCacheService.shared.markConversationAsRead(
+                conversationId: conversationId,
+                userId: userId,
+                in: modelContext
+            )
+        } catch {
+            print("❌ Error marking conversation as read: \(error)")
         }
         
-        // Listen to conversation updates (for typing indicators)
-        firestoreService.listenToConversation(conversationId: conversationId) { [weak self] conversation in
-            if let conversation = conversation {
-                self?.currentConversation = conversation
+        // 3. START FIRESTORE LISTENER (background sync)
+        firestoreService.listenToMessages(conversationId: conversationId) { [weak self] firestoreMessages in
+            guard let self = self else { return }
+            
+            print("🔥 Firestore listener fired with \(firestoreMessages.count) messages")
+            print("📊 Current messages count: \(self.messages.count)")
+            
+            // Perform all UI updates on the main thread
+            Task { @MainActor in
+                // Save to cache (with status progression protection)
+                do {
+                    try MessageCacheService.shared.saveMessages(firestoreMessages, in: self.modelContext)
+                } catch {
+                    print("❌ Error saving messages to cache: \(error)")
+                }
+                
+                // CRITICAL: UI must read from cache (single source of truth)
+                // Cache has status progression protection, Firestore data doesn't
+                self.loadMessagesFromCache()
+                
+                print("✅ Reloaded \(self.messages.count) messages from cache")
+                print("📝 Last message: \(self.messages.last?.text ?? "none") status=\(self.messages.last?.status.rawValue ?? "none")")
+                
+                self.markMessagesAsRead()
+                
+                // Update local read state (still no Firestore write!)
+                do {
+                    try MessageCacheService.shared.markConversationAsRead(
+                        conversationId: conversationId,
+                        userId: userId,
+                        in: self.modelContext
+                    )
+                } catch {
+                    print("❌ Error marking conversation as read: \(error)")
+                }
             }
+        }
+        
+        // Listen to conversation updates (for typing indicators and real-time updates)
+        firestoreService.listenToConversation(conversationId: conversationId) { [weak self] conversation in
+            guard let self = self else { return }
+            if let conversation = conversation {
+                self.currentConversation = conversation
+            }
+        }
+    }
+    
+    private func loadMessagesFromCache() {
+        guard let conversationId = currentConversation.id else { return }
+        do {
+            let localMessages = try MessageCacheService.shared.fetchMessages(
+                for: conversationId,
+                in: modelContext
+            )
+            
+            // Convert LocalMessage to Message for UI
+            let messages = localMessages.map { localMsg -> Message in
+                Message(
+                    id: localMsg.id,
+                    conversationId: localMsg.conversationId,
+                    senderId: localMsg.senderId,
+                    senderName: localMsg.senderName,
+                    senderProfileUrl: nil,
+                    text: localMsg.text,
+                    imageUrl: localMsg.imageUrl,
+                    timestamp: localMsg.timestamp,
+                    status: MessageStatus(rawValue: localMsg.status) ?? .sent,
+                    readBy: localMsg.readBy
+                )
+            }
+            
+            if !messages.isEmpty {
+                self.messages = messages
+                print("📦 Loaded \(messages.count) messages from local cache")
+            }
+        } catch {
+            print("❌ Error loading messages from cache: \(error)")
         }
     }
     
@@ -92,8 +173,17 @@ class ChatViewModel: ObservableObject {
             localImageData: imageData
         )
         
-        // Optimistic UI - add message immediately
+        // Optimistic UI - add message immediately to both UI and cache
         messages.append(message)
+        print("🚀 Created optimistic message: \(message.id ?? "no-id") with status=\(message.status.rawValue)")
+        
+        // Save to cache immediately for persistence
+        do {
+            try MessageCacheService.shared.saveMessage(message, in: modelContext)
+            print("💾 Saved optimistic message to cache: \(message.id ?? "no-id") status=\(message.status.rawValue)")
+        } catch {
+            print("❌ Error saving optimistic message to cache: \(error)")
+        }
         
         // Try to send
         Task {
@@ -108,15 +198,28 @@ class ChatViewModel: ObservableObject {
                     }
                     
                     let sentMessage = try await firestoreService.sendMessage(messageToSend)
-                    if let index = messages.firstIndex(where: { $0.id == message.id }) {
-                        messages[index] = sentMessage
+                    
+                    // CRITICAL: Update cache with confirmed status
+                    try MessageCacheService.shared.saveMessage(sentMessage, in: modelContext)
+                    print("✅ Updated cache with sent message status: \(sentMessage.status.rawValue)")
+                    
+                    // Reload from cache (single source of truth)
+                    await MainActor.run {
+                        loadMessagesFromCache()
                     }
                 } catch {
                     print("Error sending message: \(error.localizedDescription)")
                     // Store in pending queue
                     savePendingMessage(message)
-                    if let index = messages.firstIndex(where: { $0.id == message.id }) {
-                        messages[index].status = .failed
+                    
+                    // Update cache with failed status
+                    var failedMessage = message
+                    failedMessage.status = .failed
+                    try? MessageCacheService.shared.saveMessage(failedMessage, in: modelContext)
+                    
+                    // Reload from cache
+                    await MainActor.run {
+                        loadMessagesFromCache()
                     }
                 }
             } else {

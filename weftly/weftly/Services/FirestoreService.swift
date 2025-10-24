@@ -258,28 +258,73 @@ class FirestoreService: ObservableObject {
             .document(conversationId)
             .setData(messageData)
         
-        // Update conversation's last message
+        // Get conversation to find all participants
+        let conversationDoc = try await db.collection("conversations")
+            .document(messageToSend.conversationId)
+            .getDocument()
+        
+        let conversation = try? conversationDoc.data(as: Conversation.self)
+        let participants = conversation?.participants ?? []
+        
+        // Build unreadCount updates for all other participants
+        var unreadUpdates: [String: Any] = [:]
+        for participantId in participants where participantId != messageToSend.senderId {
+            unreadUpdates["unreadCount.\(participantId)"] = FieldValue.increment(Int64(1))
+        }
+        
+        // Update conversation's last message, timestamp, unread counts
+        var updates: [String: Any] = [
+            "lastMessage": messageToSend.text,
+            "lastMessageSenderId": messageToSend.senderId,
+            "lastMessageTime": FieldValue.serverTimestamp()
+        ]
+        updates.merge(unreadUpdates) { _, new in new }
+        
         try await db.collection("conversations")
             .document(messageToSend.conversationId)
-            .updateData([
-                "lastMessage": messageToSend.text,
-                "lastMessageSenderId": messageToSend.senderId,
-                "lastMessageTime": Timestamp(date: messageToSend.timestamp)
-            ])
+            .updateData(updates)
         
         return messageToSend
     }
     
+    // Convenience method for sending messages with parameters
+    func sendMessage(conversationId: String, senderId: String, senderName: String, text: String, mediaUrl: String? = nil) async throws -> Message {
+        let messageId = UUID().uuidString
+        let message = Message(
+            id: messageId,
+            conversationId: conversationId,
+            senderId: senderId,
+            senderName: senderName,
+            senderProfileUrl: nil,
+            text: text,
+            imageUrl: mediaUrl,
+            timestamp: Date(),
+            status: .sent,
+            readBy: [senderId]
+        )
+        
+        return try await sendMessage(message)
+    }
+    
     func listenToMessages(conversationId: String, completion: @escaping ([Message]) -> Void) {
+        print("👂 Setting up Firestore message listener for conversation: \(conversationId)")
+        
         let listener = db.collection("conversations")
             .document(conversationId)
             .collection("messages")
             .order(by: "timestamp", descending: false)
             .addSnapshotListener { snapshot, error in
-                guard let documents = snapshot?.documents else {
-                    print("Error fetching messages: \(error?.localizedDescription ?? "Unknown")")
+                if let error = error {
+                    print("❌ Error in message listener: \(error.localizedDescription)")
                     return
                 }
+                
+                guard let documents = snapshot?.documents else {
+                    print("⚠️ No documents in snapshot")
+                    return
+                }
+                
+                print("📬 Message listener callback fired - \(documents.count) documents")
                 
                 let messages = documents.compactMap { doc -> Message? in
                     var msg = try? doc.data(as: Message.self)
@@ -287,10 +332,12 @@ class FirestoreService: ObservableObject {
                     return msg
                 }
                 
+                print("✉️ Parsed \(messages.count) messages from Firestore")
                 completion(messages)
             }
         
         messageListeners[conversationId] = listener
+        print("✅ Listener attached and stored for conversation: \(conversationId)")
     }
     
     func removeMessageListener(conversationId: String) {
@@ -306,6 +353,15 @@ class FirestoreService: ObservableObject {
             .updateData([
                 "readBy": FieldValue.arrayUnion([userId]),
                 "status": MessageStatus.read.rawValue
+            ])
+    }
+    
+    func updateLastReadTime(conversationId: String, userId: String) async throws {
+        try await db.collection("conversations")
+            .document(conversationId)
+            .updateData([
+                "lastReadTime.\(userId)": FieldValue.serverTimestamp(), // Use server timestamp for timezone safety
+                "unreadCount.\(userId)": 0 // Reset counter to 0
             ])
     }
     

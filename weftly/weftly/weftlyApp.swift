@@ -17,10 +17,59 @@ struct weftlyApp: App {
     let modelContainer: ModelContainer
     
     init() {
+        let schema = Schema([
+            PendingMessage.self,
+            LocalMessage.self,
+            LocalConversationState.self
+        ])
+        
         do {
-            modelContainer = try ModelContainer(for: PendingMessage.self)
+            // Try with default URL first
+            let url = URL.applicationSupportDirectory.appending(path: "default.store")
+            let modelConfiguration = ModelConfiguration(
+                schema: schema,
+                url: url,
+                allowsSave: true
+            )
+            
+            modelContainer = try ModelContainer(
+                for: schema,
+                configurations: [modelConfiguration]
+            )
+            print("✅ ModelContainer initialized successfully")
         } catch {
-            fatalError("Failed to initialize ModelContainecuchr: \(error)")
+            print("❌ Failed to initialize ModelContainer: \(error)")
+            print("🗑️ Attempting to delete old store and recreate...")
+            
+            // Delete old store files
+            do {
+                let fileManager = FileManager.default
+                let appSupport = URL.applicationSupportDirectory
+                
+                // Delete all .store files
+                if let contents = try? fileManager.contentsOfDirectory(at: appSupport, includingPropertiesForKeys: nil) {
+                    for file in contents where file.pathExtension == "store" || file.lastPathComponent.contains("default") {
+                        try? fileManager.removeItem(at: file)
+                        print("🗑️ Deleted: \(file.lastPathComponent)")
+                    }
+                }
+                
+                // Recreate with fresh store
+                let url = URL.applicationSupportDirectory.appending(path: "default.store")
+                let modelConfiguration = ModelConfiguration(
+                    schema: schema,
+                    url: url,
+                    allowsSave: true
+                )
+                
+                modelContainer = try ModelContainer(
+                    for: schema,
+                    configurations: [modelConfiguration]
+                )
+                print("✅ ModelContainer recreated successfully with fresh store")
+            } catch {
+                fatalError("Failed to initialize ModelContainer even after cleanup: \(error)")
+            }
         }
     }
     

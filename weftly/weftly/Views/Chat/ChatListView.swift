@@ -6,28 +6,209 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ChatListView: View {
     @StateObject private var viewModel: ChatListViewModel
+    @StateObject private var listsViewModel: ListsViewModel
+    @StateObject private var broadcastViewModel: BroadcastViewModel
     @ObservedObject var authService: AuthService
+    @Environment(\.modelContext) private var modelContext
     @State private var showNewChat = false
     @State private var showSearch = false
+    @State private var showBroadcast = false
+    @State private var searchText = ""
+    @State private var selectedList: ConversationList?
     
     init(authService: AuthService) {
         self.authService = authService
         _viewModel = StateObject(wrappedValue: ChatListViewModel(authService: authService))
+        _listsViewModel = StateObject(wrappedValue: ListsViewModel(authService: authService))
+        _broadcastViewModel = StateObject(wrappedValue: BroadcastViewModel(authService: authService))
+    }
+    
+    var filteredConversations: [Conversation] {
+        var conversations = viewModel.conversations
+        
+        print("🔍 Total conversations: \(conversations.count), Selected list: \(selectedList?.name ?? "nil (All)")")
+        
+        // Apply list filter
+        if let list = selectedList, let currentUserId = authService.currentUser?.id {
+            // Special handling for preset lists
+            switch list.id {
+            case "preset-unread":
+                // Use local cache-based unread detection (100% local - KEY FIX)
+                conversations = conversations.filter { conv in
+                    guard let convId = conv.id else { return false }
+                    do {
+                        let unreadCount = try MessageCacheService.shared.calculateUnreadCount(
+                            for: convId,
+                            currentUserId: currentUserId,
+                            in: modelContext
+                        )
+                        return unreadCount > 0
+                    } catch {
+                        print("❌ Error calculating unread count for filter: \(error)")
+                        return false
+                    }
+                }
+                print("🔍 After Unread filter (local cache): \(conversations.count)")
+            case "preset-groups":
+                conversations = conversations.filter { conv in
+                    conv.type == .group
+                }
+                print("🔍 After Groups filter: \(conversations.count)")
+            default:
+                // Custom list - filter by conversationIds from Firestore
+                conversations = conversations.filter { conv in
+                    guard let convId = conv.id else { return false }
+                    return list.conversationIds.contains(convId)
+                }
+                print("🔍 After custom list filter: \(conversations.count)")
+            }
+        }
+        
+        // Apply search filter
+        if !searchText.isEmpty {
+            conversations = conversations.filter { conversation in
+                conversation.displayName(for: authService.currentUser?.id ?? "")
+                    .localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        
+        return conversations
+    }
+    
+    var allLists: [ConversationList] {
+        // Only return custom lists from ViewModel
+        return listsViewModel.customLists
+    }
+    
+    var searchBar: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search", text: $searchText)
+            
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color(.systemGray6))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+    
+    var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                // "All" chip
+                FilterChip(
+                    title: "All",
+                    icon: nil,
+                    isSelected: selectedList == nil
+                ) {
+                    selectedList = nil
+                }
+                
+                // Preset filter chips
+                FilterChip(
+                    title: "Unread",
+                    icon: "circle.fill",
+                    isSelected: selectedList?.id == "preset-unread"
+                ) {
+                    selectedList = .unreadList
+                }
+                
+                FilterChip(
+                    title: "Groups",
+                    icon: "person.3.fill",
+                    isSelected: selectedList?.id == "preset-groups"
+                ) {
+                    selectedList = .groupsList
+                }
+                
+                // Custom list filter chips
+                ForEach(allLists) { list in
+                    FilterChip(
+                        title: list.name,
+                        icon: list.icon,
+                        isSelected: selectedList?.id == list.id
+                    ) {
+                        selectedList = list
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.bottom, 8)
+    }
+    
+    var conversationList: some View {
+        List {
+            ForEach(filteredConversations) { conversation in
+                let unread = viewModel.getUnreadCount(for: conversation)
+                conversationRow(for: conversation, unreadCount: unread)
+            }
+        }
+        .listStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    func conversationRow(for conversation: Conversation, unreadCount: Int) -> some View {
+        let destination = ChatDetailView(
+            conversation: conversation,
+            authService: authService,
+            chatListViewModel: viewModel,
+            modelContext: modelContext
+        )
+        return NavigationLink(destination: destination) {
+            ConversationRow(
+                conversation: conversation,
+                currentUserId: authService.currentUser?.id ?? "",
+                unreadCount: unreadCount
+            )
+        }
+        .contextMenu {
+            contextMenuContent(for: conversation)
+        }
+    }
+    
+    func contextMenuContent(for conversation: Conversation) -> some View {
+        Group {
+            if !listsViewModel.customLists.isEmpty {
+                Menu("Add to List") {
+                    ForEach(listsViewModel.customLists) { list in
+                        Button {
+                            if let listId = list.id, let convId = conversation.id {
+                                Task {
+                                    try? await listsViewModel.addConversationToList(listId: listId, conversationId: convId)
+                                }
+                            }
+                        } label: {
+                            Label(list.name, systemImage: list.icon ?? "list.bullet")
+                        }
+                    }
+                }
+            }
+        }
     }
     
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(viewModel.conversations) { conversation in
-                    NavigationLink(destination: ChatDetailView(conversation: conversation, authService: authService, chatListViewModel: viewModel)) {
-                        ConversationRow(conversation: conversation, currentUserId: authService.currentUser?.id ?? "")
-                    }
-                }
+            VStack(spacing: 0) {
+                searchBar
+                filterChips
+                conversationList
             }
-            .navigationTitle("Messages")
+            .navigationTitle("Chats")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
@@ -71,6 +252,14 @@ struct ChatListView: View {
                         } label: {
                             Label("New Group Chat", systemImage: "person.3.fill")
                         }
+                        
+                        Divider()
+                        
+                        Button {
+                            showBroadcast = true
+                        } label: {
+                            Label("New Broadcast", systemImage: "megaphone")
+                        }
                     } label: {
                         Image(systemName: "square.and.pencil")
                     }
@@ -82,14 +271,23 @@ struct ChatListView: View {
             .sheet(isPresented: $showNewChat) {
                 NewGroupView(authService: authService, viewModel: viewModel)
             }
+            .sheet(isPresented: $showBroadcast) {
+                CreateBroadcastListView(viewModel: broadcastViewModel)
+            }
             .onAppear {
                 print("📱 ChatListView appeared, user: \(authService.currentUser?.displayName ?? "nil")")
+                
+                // Wire up model context to viewModel (KEY for unread counter fix)
+                viewModel.setModelContext(modelContext)
+                
                 if authService.currentUser != nil {
                     viewModel.startListening()
+                    listsViewModel.startListening()
                 }
             }
             .onDisappear {
                 viewModel.stopListening()
+                listsViewModel.stopListening()
             }
             .onChange(of: authService.currentUser) { _, newUser in
                 print("📱 Auth state changed, user: \(newUser?.displayName ?? "nil")")
@@ -105,18 +303,20 @@ struct ChatListView: View {
 struct ConversationRow: View {
     let conversation: Conversation
     let currentUserId: String
+    let unreadCount: Int  // Passed from parent (100% local calculation - KEY FIX)
     @StateObject private var presenceViewModel: PresenceViewModel
     
-    init(conversation: Conversation, currentUserId: String) {
+    init(conversation: Conversation, currentUserId: String, unreadCount: Int) {
         self.conversation = conversation
         self.currentUserId = currentUserId
+        self.unreadCount = unreadCount
         
         // For direct chats, get the other user's ID
         let otherUserId = conversation.type == .direct 
             ? conversation.participants.first(where: { $0 != currentUserId }) 
             : nil
         
-        print("💬 ConversationRow init: convId=\(conversation.id ?? "nil"), participants=\(conversation.participants), current=\(currentUserId), other=\(otherUserId ?? "nil")")
+        print("💬 ConversationRow init: convId=\(conversation.id ?? "nil"), participants=\(conversation.participants), current=\(currentUserId), other=\(otherUserId ?? "nil"), unread=\(unreadCount)")
         
         _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId))
     }
@@ -150,6 +350,7 @@ struct ConversationRow: View {
                 HStack {
                     Text(conversation.displayName(for: currentUserId))
                         .font(.headline)
+                        .fontWeight(unreadCount > 0 ? .semibold : .regular)
                     
                     Spacer()
                     
@@ -160,11 +361,27 @@ struct ConversationRow: View {
                     }
                 }
                 
-                if let lastMessage = conversation.lastMessage {
-                    Text(lastMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                HStack {
+                    if let lastMessage = conversation.lastMessage {
+                        Text(lastMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(unreadCount > 0 ? .primary : .secondary)
+                            .lineLimit(1)
+                    }
+                    
+                    Spacer()
+                    
+                    // Unread count badge (WhatsApp style) using local cache
+                    if unreadCount > 0 {
+                        Text("\(unreadCount)")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, unreadCount > 9 ? 6 : 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green)
+                            .clipShape(Circle())
+                    }
                 }
             }
         }

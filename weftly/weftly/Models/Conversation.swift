@@ -24,7 +24,8 @@ struct Conversation: Identifiable, Codable, Equatable {
     var lastMessage: String?
     var lastMessageSenderId: String?
     var lastMessageTime: Date?
-    var unreadCount: [String: Int] // userId: count mapping
+    var unreadCount: [String: Int] // userId: count mapping (deprecated, use lastReadTime)
+    var lastReadTime: [String: Date] // userId: timestamp when user last read this conversation
     var typingUsers: [String] // Array of user IDs currently typing
     
     enum CodingKeys: String, CodingKey {
@@ -39,10 +40,11 @@ struct Conversation: Identifiable, Codable, Equatable {
         case lastMessageSenderId
         case lastMessageTime
         case unreadCount
+        case lastReadTime
         case typingUsers
     }
     
-    init(id: String? = nil, type: ConversationType, participants: [String], participantNames: [String: String] = [:], participantProfileUrls: [String: String] = [:], groupName: String? = nil, groupIconUrl: String? = nil, lastMessage: String? = nil, lastMessageSenderId: String? = nil, lastMessageTime: Date? = nil, unreadCount: [String: Int] = [:], typingUsers: [String] = []) {
+    init(id: String? = nil, type: ConversationType, participants: [String], participantNames: [String: String] = [:], participantProfileUrls: [String: String] = [:], groupName: String? = nil, groupIconUrl: String? = nil, lastMessage: String? = nil, lastMessageSenderId: String? = nil, lastMessageTime: Date? = nil, unreadCount: [String: Int] = [:], lastReadTime: [String: Date] = [:], typingUsers: [String] = []) {
         self.id = id
         self.type = type
         self.participants = participants
@@ -54,7 +56,26 @@ struct Conversation: Identifiable, Codable, Equatable {
         self.lastMessageSenderId = lastMessageSenderId
         self.lastMessageTime = lastMessageTime
         self.unreadCount = unreadCount
+        self.lastReadTime = lastReadTime
         self.typingUsers = typingUsers
+    }
+    
+    // Custom decoder to handle missing lastReadTime in old documents
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        type = try container.decode(ConversationType.self, forKey: .type)
+        participants = try container.decode([String].self, forKey: .participants)
+        participantNames = try container.decode([String: String].self, forKey: .participantNames)
+        participantProfileUrls = try container.decode([String: String].self, forKey: .participantProfileUrls)
+        groupName = try container.decodeIfPresent(String.self, forKey: .groupName)
+        groupIconUrl = try container.decodeIfPresent(String.self, forKey: .groupIconUrl)
+        lastMessage = try container.decodeIfPresent(String.self, forKey: .lastMessage)
+        lastMessageSenderId = try container.decodeIfPresent(String.self, forKey: .lastMessageSenderId)
+        lastMessageTime = try container.decodeIfPresent(Date.self, forKey: .lastMessageTime)
+        unreadCount = (try? container.decode([String: Int].self, forKey: .unreadCount)) ?? [:]
+        lastReadTime = (try? container.decode([String: Date].self, forKey: .lastReadTime)) ?? [:] // Default to empty if missing
+        typingUsers = (try? container.decode([String].self, forKey: .typingUsers)) ?? []
     }
     
     // Helper to get conversation title for UI

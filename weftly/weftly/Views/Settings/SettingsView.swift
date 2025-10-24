@@ -10,6 +10,16 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var authService: AuthService
     @State private var showSignOutAlert = false
+    @StateObject private var listsViewModel: ListsViewModel
+    @StateObject private var privacyViewModel: PrivacyViewModel
+    @StateObject private var broadcastViewModel: BroadcastViewModel
+    
+    init(authService: AuthService) {
+        self.authService = authService
+        _listsViewModel = StateObject(wrappedValue: ListsViewModel(authService: authService))
+        _privacyViewModel = StateObject(wrappedValue: PrivacyViewModel(authService: authService))
+        _broadcastViewModel = StateObject(wrappedValue: BroadcastViewModel(authService: authService))
+    }
     
     var body: some View {
         NavigationStack {
@@ -46,56 +56,56 @@ struct SettingsView: View {
                     Text("Account")
                 }
                 
-                // Lists Section (Placeholder for PR #13)
+                // Lists Section
                 Section {
-                    HStack {
-                        Image(systemName: "list.bullet")
-                            .foregroundStyle(.blue)
-                            .frame(width: 30)
-                        Text("Lists")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
+                    NavigationLink {
+                        ListsView(viewModel: listsViewModel)
+                    } label: {
+                        HStack {
+                            Image(systemName: "list.bullet")
+                                .foregroundStyle(.blue)
+                                .frame(width: 30)
+                            Text("Lists")
+                        }
                     }
                 } header: {
                     Text("Organization")
                 } footer: {
-                    Text("Create custom lists to organize your chats. Coming soon.")
+                    Text("Create custom lists to organize your chats.")
                 }
                 
-                // Broadcast Messages Section (Placeholder for PR #14)
+                // Broadcast Messages Section
                 Section {
-                    HStack {
-                        Image(systemName: "megaphone")
-                            .foregroundStyle(.blue)
-                            .frame(width: 30)
-                        Text("Broadcast messages")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
+                    NavigationLink {
+                        BroadcastView(viewModel: broadcastViewModel)
+                    } label: {
+                        HStack {
+                            Image(systemName: "megaphone")
+                                .foregroundStyle(.blue)
+                                .frame(width: 30)
+                            Text("Broadcast messages")
+                        }
                     }
                 } footer: {
-                    Text("Send a message to multiple contacts at once. Coming soon.")
+                    Text("Send a message to multiple contacts at once.")
                 }
                 
-                // Privacy Section (Placeholder for PR #13)
+                // Privacy Section
                 Section {
-                    HStack {
-                        Image(systemName: "lock")
-                            .foregroundStyle(.blue)
-                            .frame(width: 30)
-                        Text("Privacy")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
+                    NavigationLink {
+                        PrivacyView(viewModel: privacyViewModel)
+                    } label: {
+                        HStack {
+                            Image(systemName: "lock")
+                                .foregroundStyle(.blue)
+                                .frame(width: 30)
+                            Text("Privacy")
+                        }
                     }
                 } header: {
                     Text("Privacy")
                 } footer: {
-                    Text("Control your last seen, read receipts, and online status. Coming soon.")
+                    Text("Control your last seen, read receipts, and online status.")
                 }
                 
                 // Account Actions

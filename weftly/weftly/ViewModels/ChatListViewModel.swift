@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import SwiftData
 import Combine
 
 @MainActor
@@ -16,6 +17,7 @@ class ChatListViewModel: ObservableObject {
     
     private let firestoreService = FirestoreService()
     private let authService: AuthService
+    private var modelContext: ModelContext?
     private var lastMessageTimestamps: [String: Date] = [:]
     private var hasInitializedTimestamps = false
     private var activeConversationId: String?
@@ -24,18 +26,90 @@ class ChatListViewModel: ObservableObject {
         self.authService = authService
     }
     
+    func setModelContext(_ context: ModelContext) {
+        self.modelContext = context
+    }
+    
     func setActiveConversation(id: String?) {
         activeConversationId = id
         NotificationService.shared.setActiveConversation(id: id)
     }
     
+    func getUnreadCount(for conversation: Conversation) -> Int {
+        guard let context = modelContext,
+              let conversationId = conversation.id,
+              let currentUserId = authService.currentUser?.id else {
+            return 0
+        }
+        
+        // Calculate unread from cache (100% local)
+        // Background sync keeps cache updated
+        do {
+            return try MessageCacheService.shared.calculateUnreadCount(
+                for: conversationId,
+                currentUserId: currentUserId,
+                in: context
+            )
+        } catch {
+            print("❌ Error calculating unread count: \(error)")
+            return 0
+        }
+    }
+    
     func startListening() {
-        guard let userId = authService.currentUser?.id else { return }
+        guard let userId = authService.currentUser?.id else {
+            print("❌ ChatListViewModel: No user ID, can't start listening")
+            return
+        }
+        
+        print("👂 ChatListViewModel: Starting to listen for conversations for user: \(userId)")
         
         firestoreService.listenToConversations(userId: userId) { [weak self] conversations in
             guard let self else { return }
+            print("📨 ChatListViewModel: Received \(conversations.count) conversations from Firestore")
+            for conv in conversations {
+                print("  - Conv: \(conv.id ?? "no-id"), type: \(conv.type), participants: \(conv.participants.count)")
+            }
             self.conversations = conversations
             self.handleConversationUpdates(conversations: conversations)
+            
+            // Background sync for unread counters (optimized - skips unchanged messages)
+            self.syncMessagesToCache(for: conversations)
+        }
+    }
+    
+    private func syncMessagesToCache(for conversations: [Conversation]) {
+        guard let context = modelContext else { return }
+        
+        for conversation in conversations {
+            guard let conversationId = conversation.id else { continue }
+            
+            // Lightweight background sync: only listens, doesn't re-write unchanged messages
+            firestoreService.listenToMessages(conversationId: conversationId) { [weak self] messages in
+                guard let self = self else { return }
+                
+                // Save to cache (optimized: skips unchanged messages automatically)
+                Task { @MainActor in
+                    do {
+                        try MessageCacheService.shared.saveMessages(messages, in: context)
+                        
+                        // CRITICAL: Update conversation's lastMessage immediately (don't wait for Firestore)
+                        // This prevents the 1-second delay in message preview
+                        if let lastMessage = messages.last,
+                           let index = self.conversations.firstIndex(where: { $0.id == conversationId }) {
+                            self.conversations[index].lastMessage = lastMessage.text
+                            self.conversations[index].lastMessageTime = lastMessage.timestamp
+                            self.conversations[index].lastMessageSenderId = lastMessage.senderId
+                            print("⚡️ Updated conversation preview immediately: \(lastMessage.text.prefix(20))...")
+                        }
+                        
+                        // Refresh UI
+                        self.objectWillChange.send()
+                    } catch {
+                        print("❌ Error syncing messages: \(error)")
+                    }
+                }
+            }
         }
     }
     

@@ -15,145 +15,38 @@ struct ChatDetailView: View {
     let authService: AuthService
     let chatListViewModel: ChatListViewModel?
     
+    @StateObject private var networkMonitor: NetworkMonitor
     @StateObject private var viewModel: ChatViewModel
-    @StateObject private var networkMonitor = NetworkMonitor()
-    @Environment(\.modelContext) private var modelContext
     
     @State private var showImagePicker = false
     @State private var selectedImage: PhotosPickerItem?
     
-    init(conversation: Conversation, authService: AuthService, chatListViewModel: ChatListViewModel? = nil) {
+    init(conversation: Conversation, authService: AuthService, chatListViewModel: ChatListViewModel? = nil, modelContext: ModelContext) {
         self.conversation = conversation
         self.authService = authService
         self.chatListViewModel = chatListViewModel
-        
-        // Note: In real app, we'd inject modelContext properly
-        // For now, this will be set up in the app entry point
-        let container = try! ModelContainer(for: PendingMessage.self)
+        let monitor = NetworkMonitor()
+        _networkMonitor = StateObject(wrappedValue: monitor)
         _viewModel = StateObject(wrappedValue: ChatViewModel(
             conversation: conversation,
             authService: authService,
-            networkMonitor: NetworkMonitor(),
-            modelContext: container.mainContext
+            networkMonitor: monitor,
+            modelContext: modelContext
         ))
     }
     
     var body: some View {
+        contentView(viewModel: viewModel)
+    }
+    
+    @ViewBuilder
+    private func contentView(viewModel: ChatViewModel) -> some View {
         VStack(spacing: 0) {
-            if viewModel.currentConversation.type == .group {
-                GroupInfoHeader(
-                    title: viewModel.currentConversation.groupName ?? "Group",
-                    members: participantNames,
-                    currentUserName: authService.currentUser?.displayName
-                )
-            }
-            
-            // Messages list
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(viewModel.messages) { message in
-                            MessageBubble(
-                                message: message,
-                                isCurrentUser: message.senderId == authService.currentUser?.id
-                            )
-                            .id(message.id)
-                        }
-                    }
-                    .padding()
-                }
-                .onChange(of: viewModel.messages.count) { _, _ in
-                    if let lastMessage = viewModel.messages.last {
-                        withAnimation {
-                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                        }
-                    }
-                }
-            }
-            
-            // Typing indicator
-            if let typingText = viewModel.typingUsersText {
-                HStack {
-                    Text(typingText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal)
-                    Spacer()
-                }
-                Divider()
-            }
-            
-            // Network status
-            if !networkMonitor.isConnected {
-                HStack {
-                    Image(systemName: "wifi.slash")
-                        .foregroundStyle(.red)
-                    Text("No connection - messages will send when online")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 4)
-                .background(Color(.systemGray6))
-            }
-            
-            // Input area
-            VStack(spacing: 8) {
-                if let pendingData = viewModel.pendingImageData, let image = UIImage(data: pendingData) {
-                    HStack {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 60, height: 60)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(
-                                Button(action: { viewModel.pendingImageData = nil }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.white)
-                                        .background(Circle().fill(Color.black.opacity(0.6)))
-                                }
-                                .offset(x: 8, y: -8)
-                            , alignment: .topTrailing)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                }
-                
-                HStack(spacing: 12) {
-                    PhotosPicker(selection: $selectedImage, matching: .images) {
-                        Image(systemName: "photo")
-                            .font(.title2)
-                            .foregroundStyle(viewModel.pendingImageData == nil ? .blue : .gray)
-                    }
-                    .disabled(viewModel.pendingImageData != nil)
-                    
-                    TextField("Message", text: $viewModel.messageText, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...5)
-                        .onChange(of: viewModel.messageText) { _, _ in
-                            Task { @MainActor in
-                                viewModel.handleTextChange()
-                            }
-                        }
-                        .submitLabel(.send)
-                        .onSubmit {
-                            if canSendMessage {
-                                viewModel.sendMessage()
-                            }
-                        }
-                    
-                    Button(action: {
-                        viewModel.sendMessage()
-                    }) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(canSendMessage ? .blue : .gray)
-                    }
-                    .disabled(!canSendMessage)
-                }
-                .padding()
-                .background(Color(.systemBackground))
-            }
+            groupHeaderView(viewModel: viewModel)
+            messagesListView(viewModel: viewModel)
+            typingIndicatorView(viewModel: viewModel)
+            networkStatusView()
+            inputAreaView(viewModel: viewModel)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -162,7 +55,7 @@ struct ChatDetailView: View {
                     // Show custom header with online/last seen for 1:1 chats
                     ChatHeaderView(
                         displayName: viewModel.currentConversation.displayName(for: authService.currentUser?.id ?? ""),
-                        otherUserId: otherParticipantId
+                        otherUserId: otherParticipantId(for: viewModel)
                     )
                 } else {
                     // Show simple title for groups
@@ -187,7 +80,7 @@ struct ChatDetailView: View {
         .onChange(of: selectedImage) { _, newValue in
             guard let newValue = newValue else { return }
             
-            Task {
+            Task { @MainActor in
                 if let data = try? await newValue.loadTransferable(type: Data.self),
                    let image = UIImage(data: data) {
                     viewModel.sendImage(image)
@@ -197,7 +90,149 @@ struct ChatDetailView: View {
         }
     }
     
-    private var participantNames: [String] {
+    // MARK: - Sub-views
+    
+    @ViewBuilder
+    private func groupHeaderView(viewModel: ChatViewModel) -> some View {
+        if viewModel.currentConversation.type == .group {
+            GroupInfoHeader(
+                title: viewModel.currentConversation.groupName ?? "Group",
+                members: participantNames(for: viewModel),
+                currentUserName: authService.currentUser?.displayName
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private func messagesListView(viewModel: ChatViewModel) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(viewModel.messages) { message in
+                        MessageBubble(
+                            message: message,
+                            isCurrentUser: message.senderId == authService.currentUser?.id
+                        )
+                        .id(message.id)
+                    }
+                }
+                .padding()
+            }
+            .onChange(of: viewModel.messages.count) { _, _ in
+                if let lastMessage = viewModel.messages.last {
+                    withAnimation {
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func typingIndicatorView(viewModel: ChatViewModel) -> some View {
+        if let typingText = viewModel.typingUsersText {
+            HStack {
+                Text(typingText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                Spacer()
+            }
+            Divider()
+        }
+    }
+    
+    @ViewBuilder
+    private func networkStatusView() -> some View {
+        if !networkMonitor.isConnected {
+            HStack {
+                Image(systemName: "wifi.slash")
+                    .foregroundStyle(.red)
+                Text("No connection - messages will send when online")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 4)
+            .background(Color(.systemGray6))
+        }
+    }
+    
+    @ViewBuilder
+    private func inputAreaView(viewModel: ChatViewModel) -> some View {
+        VStack(spacing: 8) {
+            pendingImagePreview(viewModel: viewModel)
+            messageInputRow(viewModel: viewModel)
+        }
+    }
+    
+    @ViewBuilder
+    private func pendingImagePreview(viewModel: ChatViewModel) -> some View {
+        if let pendingData = viewModel.pendingImageData, let image = UIImage(data: pendingData) {
+            HStack {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 60, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(alignment: .topTrailing) {
+                        Button(action: { viewModel.pendingImageData = nil }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.white)
+                                .background(Circle().fill(Color.black.opacity(0.6)))
+                        }
+                        .offset(x: 8, y: -8)
+                    }
+                Spacer()
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    @ViewBuilder
+    private func messageInputRow(viewModel: ChatViewModel) -> some View {
+        HStack(spacing: 12) {
+            PhotosPicker(selection: $selectedImage, matching: .images) {
+                Image(systemName: "photo")
+                    .font(.title2)
+                    .foregroundStyle(viewModel.pendingImageData == nil ? .blue : .gray)
+            }
+            .disabled(viewModel.pendingImageData != nil)
+            
+            TextField("Message", text: Binding(
+                get: { viewModel.messageText },
+                set: { viewModel.messageText = $0 }
+            ), axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...5)
+                .onChange(of: viewModel.messageText) { _, _ in
+                    Task { @MainActor in
+                        viewModel.handleTextChange()
+                    }
+                }
+                .submitLabel(.send)
+                .onSubmit {
+                    if canSendMessage(for: viewModel) {
+                        viewModel.sendMessage()
+                    }
+                }
+            
+            Button(action: {
+                viewModel.sendMessage()
+            }) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(canSendMessage(for: viewModel) ? .blue : .gray)
+            }
+            .disabled(!canSendMessage(for: viewModel))
+        }
+        .padding()
+        .background(Color(.systemBackground))
+    }
+    
+    // MARK: - Helpers
+    
+    private func participantNames(for viewModel: ChatViewModel) -> [String] {
         let currentUserId = authService.currentUser?.id ?? ""
         let others = viewModel.currentConversation.participantNames.filter { $0.key != currentUserId }
             .sorted { $0.value.lowercased() < $1.value.lowercased() }
@@ -208,14 +243,12 @@ struct ChatDetailView: View {
         return others
     }
     
-    private var otherParticipantId: String? {
+    private func otherParticipantId(for viewModel: ChatViewModel) -> String? {
         let currentUserId = authService.currentUser?.id ?? ""
         return viewModel.currentConversation.participants.first(where: { $0 != currentUserId })
     }
-}
-
-extension ChatDetailView {
-    private var canSendMessage: Bool {
+    
+    private func canSendMessage(for viewModel: ChatViewModel) -> Bool {
         let trimmed = viewModel.messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         return !trimmed.isEmpty || viewModel.pendingImageData != nil
     }
