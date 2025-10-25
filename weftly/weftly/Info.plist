@@ -21,5 +21,9 @@
 			<string>com.googleusercontent.apps.526878575411-r9sphlm5b2fkeocvm9n92bvum1bbj2eb</string>
 		</dict>
 	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Weftly needs access to your calendar to add events detected in your messages and check for scheduling conflicts.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Weftly needs access to your calendar to add events detected in your messages.</string>
 </dict>
 </plist>

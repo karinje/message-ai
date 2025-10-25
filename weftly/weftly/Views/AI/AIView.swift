@@ -29,7 +29,7 @@ struct AIView: View {
                         .font(.headline)
                         .foregroundStyle(.secondary)
                     
-                    Text("Smart calendar extraction, decision summarization, priority detection, RSVP tracking, and deadline reminders")
+                    Text("Chat with your intelligent assistant to search messages, translate conversations, get summaries, and more")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -38,19 +38,19 @@ struct AIView: View {
                 
                 Spacer()
                 
-                // Feature List
+                // Quick Actions Preview
                 VStack(alignment: .leading, spacing: 16) {
-                    FeatureRow(icon: "calendar.badge.clock", title: "Calendar Extraction", description: "Auto-detect dates and events")
-                    FeatureRow(icon: "list.bullet.clipboard", title: "Decision Summary", description: "Summarize group decisions")
-                    FeatureRow(icon: "exclamationmark.triangle", title: "Priority Detection", description: "Flag urgent messages")
-                    FeatureRow(icon: "hand.raised", title: "RSVP Tracking", description: "Track event confirmations")
-                    FeatureRow(icon: "bell.badge", title: "Deadline Reminders", description: "Never miss a deadline")
+                    FeatureRow(icon: "magnifyingglass", title: "Search Messages", description: "Find anything in your chats")
+                    FeatureRow(icon: "text.bubble", title: "Summarize Conversations", description: "Get quick summaries")
+                    FeatureRow(icon: "globe", title: "Translate", description: "Translate any message")
+                    FeatureRow(icon: "calendar", title: "Show Calendar", description: "View upcoming events")
+                    FeatureRow(icon: "list.bullet", title: "Check RSVPs", description: "See who's responded")
                 }
                 .padding(.horizontal, 24)
                 
                 Spacer()
             }
-            .navigationTitle("AI")
+            .navigationTitle("Assistant")
             .navigationBarTitleDisplayMode(.large)
         }
     }

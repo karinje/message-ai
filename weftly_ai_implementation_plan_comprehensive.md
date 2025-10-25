@@ -56,20 +56,23 @@ Weftly/                                    # iOS App (existing)
 │   │   ├── ChatDetailViewModel.swift      # ✅ existing - MODIFY for AI features
 │   │   ├── ProfileViewModel.swift         # ✅ existing
 │   │   ├── GroupChatViewModel.swift       # ✅ existing
-│   │   ├── AIChatViewModel.swift          # 🆕 AI assistant chat
+│   │   ├── AssistantViewModel.swift       # 🆕 AI assistant chat
+│   │   ├── DigestViewModel.swift          # 🆕 Digest tab coordinator
 │   │   ├── CalendarViewModel.swift        # 🆕 calendar management
 │   │   ├── RSVPViewModel.swift            # 🆕 RSVP tracking
 │   │   └── DeadlineViewModel.swift        # 🆕 deadline management
 │   │
 │   ├── Views/
-│   │   ├── AI/                            # 🆕 NEW TAB CONTENT
-│   │   │   ├── AITabView.swift            # 🆕 main AI tab container
-│   │   │   ├── AIChatView.swift           # 🆕 AI assistant chat interface
-│   │   │   ├── QuickActionsView.swift     # 🆕 quick action buttons
-│   │   │   ├── CalendarEventsView.swift   # 🆕 extracted events list
-│   │   │   ├── RSVPDashboardView.swift    # 🆕 RSVP tracking dashboard
-│   │   │   ├── DeadlinesView.swift        # 🆕 deadlines list
-│   │   │   └── DecisionSummaryView.swift  # 🆕 group decisions
+│   │   ├── Assistant/                     # 🆕 ASSISTANT TAB (pure chat)
+│   │   │   ├── AssistantChatView.swift    # 🆕 AI chat interface with quick actions
+│   │   │   └── QuickActionsView.swift     # 🆕 quick action buttons
+│   │   │
+│   │   ├── Digest/                        # 🆕 DIGEST TAB (auto-extracted insights)
+│   │   │   ├── DigestView.swift           # 🆕 main Digest tab container
+│   │   │   ├── CalendarEventsSection.swift # 🆕 upcoming events section
+│   │   │   ├── RSVPSection.swift          # 🆕 RSVP tracking section
+│   │   │   ├── DeadlinesSection.swift     # 🆕 deadlines section
+│   │   │   └── DecisionsSection.swift     # 🆕 group decisions section
 │   │   │
 │   │   ├── Chat/
 │   │   │   ├── ChatListView.swift         # ✅ existing - MODIFY for priority badges
@@ -229,6 +232,30 @@ aiChats/{chatId}/                           # 🆕 NEW ROOT COLLECTION
 
 ---
 
+## 📱 iOS App Tab Structure (Redesigned for Busy Parents)
+
+### **Tab Organization:**
+
+**Tab 1 (Leftmost): Assistant** 🤖
+- Pure conversational AI chat interface
+- Chat about ANY message thread or conversation
+- Quick action buttons (search, translate, summarize, etc.)
+- Uses LangGraph multi-tool agent backend
+
+**Tab 2: Digest** 📊
+- Auto-extracted AI insights at a glance
+- Sections: Upcoming Events, Pending RSVPs, Deadlines, Recent Decisions
+- Sorted by urgency and time
+- Tap any item to navigate to source conversation
+
+**Tab 3: Chats** 💬
+- Main messaging interface (existing)
+
+**Tab 4 (Rightmost): Settings** ⚙️
+- Account, Privacy, Lists, Broadcasts (existing)
+
+---
+
 ## 📱 iOS App Changes (PR #17-18)
 
 ### **PR #17: AI Infrastructure Setup**
@@ -334,31 +361,21 @@ aiChats/{chatId}/                           # 🆕 NEW ROOT COLLECTION
 
 ---
 
-### **PR #18: AI Chat Interface (Advanced AI Feature)**
-**Branch:** `feature/ai-chat-interface`  
+### **PR #18: AI Chat Interface + Digest Tab (Advanced AI Feature)**
+**Branch:** `feature/ai-assistant-and-digest`  
 **Estimated Time:** 6-8 hours  
-**Description:** Implement AI assistant chat with LangGraph agent backend
+**Description:** Implement Assistant tab (AI chat) and Digest tab (auto-extracted insights)
 
 #### **Tasks:**
 
-**1. Create AI Tab Views**
+**1. Create Assistant Tab Views (Pure Chat Interface)**
 
 **Files to Create:**
-- `Views/AI/AITabView.swift`
-  - Main container for AI tab
-  - Segments/sections:
-    - AI Chat (conversational assistant)
-    - Calendar Events (extracted)
-    - RSVPs (active tracking)
-    - Deadlines (upcoming)
-    - Decisions (group summaries)
-  - Navigation: Use `NavigationStack` with list selection
-  
-- `Views/AI/AIChatView.swift`
-  - Chat interface mimicking ChatDetailView style
-  - Message bubbles for user/assistant
+- `Views/Assistant/AssistantChatView.swift` (replaces AITabView)
+  - Pure conversational AI chat interface
+  - Message bubbles for user/assistant (similar to ChatDetailView style)
   - Input field with "Ask anything..." placeholder
-  - Quick action buttons above input:
+  - Quick action buttons above input (horizontal scroll):
     - "📅 Show Calendar"
     - "✅ Pending RSVPs"
     - "⏰ Deadlines"
@@ -367,56 +384,71 @@ aiChats/{chatId}/                           # 🆕 NEW ROOT COLLECTION
   - Loading indicator while AI responds
   - Typing indicator animation
   - Auto-scroll to bottom on new message
+  - No navigation - this IS the tab content
   
-- `Views/AI/QuickActionsView.swift`
+- `Views/Assistant/QuickActionsView.swift`
   - Horizontal scrollable row of action chips
   - Each chip triggers pre-filled query to AI
   - Icons + labels
+
+**2. Create Digest Tab Views (Auto-Extracted Insights)**
+
+**Files to Create:**
+- `Views/Digest/DigestView.swift`
+  - Main container for Digest tab
+  - Scrollable list of collapsible sections:
+    - Upcoming Events (sorted by date)
+    - Pending RSVPs (needs attention)
+    - Deadlines (sorted by urgency)
+    - Recent Decisions (last 7 days)
+  - Each section shows count badge
+  - Empty state: "No insights yet - start chatting!"
+  - Pull to refresh to re-scan conversations
   
-- `Views/AI/CalendarEventsView.swift`
-  - List of extracted calendar events
+- `Views/Digest/CalendarEventsSection.swift`
+  - Collapsible section for extracted calendar events
   - Group by: Today, This Week, Later
   - Each card shows:
     - Event title
     - Date/time
     - Location (if any)
     - "Add to Calendar" button
-    - Source conversation link
-  - Empty state: "No upcoming events found in your chats"
+    - Tap card → navigate to source conversation
+  - Empty state: "No upcoming events found"
   
-- `Views/AI/RSVPDashboardView.swift`
-  - List of active events with RSVP tracking
+- `Views/Digest/RSVPSection.swift`
+  - Collapsible section for active RSVP tracking
   - Each card shows:
     - Event title + date
     - Visual summary: 8 Yes / 2 Maybe / 1 No / 3 No Reply
     - Progress bar
-    - Participant list with checkmarks
     - "Remind No Replies" button
+    - Tap card → navigate to source conversation
   - Empty state: "No active RSVPs"
   
-- `Views/AI/DeadlinesView.swift`
-  - List of user's deadlines
+- `Views/Digest/DeadlinesSection.swift`
+  - Collapsible section for user's deadlines
   - Group by: Overdue, Today, This Week, Later
   - Each card shows:
     - Task description
     - Due date
     - Priority badge (high/medium/low)
-    - Source conversation link
     - Checkbox to mark complete
+    - Tap card → navigate to source conversation
   - Swipe to complete
   - Empty state: "No deadlines found"
   
-- `Views/AI/DecisionSummaryView.swift`
-  - List of extracted group decisions
+- `Views/Digest/DecisionsSection.swift`
+  - Collapsible section for group decisions
   - Each card shows:
     - Decision topic
     - Final decision
     - Participants (with avatars)
     - Timestamp
-    - "View Thread" link
+    - Tap card → navigate to source conversation
   - Empty state: "No group decisions yet"
 
-**2. Create UI Components**
+**3. Create UI Components (Shared)**
 
 **Files to Create:**
 - `Views/Components/EventCardView.swift`
@@ -432,10 +464,10 @@ aiChats/{chatId}/                           # 🆕 NEW ROOT COLLECTION
   - Checkbox, task text, due date
   - Urgency indicator (e.g., "Due in 2 hours")
 
-**3. Create ViewModels**
+**4. Create ViewModels**
 
 **Files to Create:**
-- `ViewModels/AIChatViewModel.swift`
+- `ViewModels/AssistantViewModel.swift` (renamed from AIChatViewModel)
   - Properties:
     - `messages: [AIChatMessage]`
     - `currentChatId: String?`
@@ -478,22 +510,50 @@ aiChats/{chatId}/                           # 🆕 NEW ROOT COLLECTION
   - Computed properties: `overdueDeadlines`, `todayDeadlines`, `upcomingDeadlines`
   - Listens to Firestore subcollection: `users/{uid}/deadlines`
 
-**4. Integrate into Main App**
+- `ViewModels/DigestViewModel.swift` (NEW)
+  - Properties:
+    - `@Published var events: [ExtractedEvent] = []`
+    - `@Published var rsvps: [RSVPResponse] = []`
+    - `@Published var deadlines: [Deadline] = []`
+    - `@Published var decisions: [AIDecision] = []`
+    - `@Published var isLoading = false`
+    - `@Published var lastRefreshed: Date?`
+  - Methods:
+    - `loadAllInsights() async` - load all 4 sections
+    - `refresh() async` - manual refresh
+  - Computed properties:
+    - `upcomingEventCount: Int`
+    - `pendingRSVPCount: Int`
+    - `overdueDeadlineCount: Int`
+    - `recentDecisionCount: Int`
+
+**5. Integrate into Main App**
 
 **Files to Modify:**
-- `Views/Main/ContentView.swift`
-  - Ensure AI tab navigation works
-  - Pass environment objects to AI views
+- `Views/Main/MainTabView.swift`
+  - Tab 1: AssistantChatView (rename from AIView)
+  - Tab 2: DigestView (rename from UpdatesView)
+  - Tab 3: ChatListView (unchanged)
+  - Tab 4: SettingsView (unchanged)
+  - Update tab labels and icons:
+    - "Assistant" with sparkles icon
+    - "Digest" with chart.bar.doc.horizontal icon (or similar)
+  - Add badge to Digest tab showing total pending items
 
 #### **Verification Checklist:**
-- [ ] AI Chat view renders correctly
+- [ ] Assistant tab renders correctly (pure chat interface)
 - [ ] Can send message to AI and get response
 - [ ] Quick action buttons trigger appropriate queries
-- [ ] Calendar events view shows extracted events
+- [ ] Digest tab shows all 4 sections (Events, RSVPs, Deadlines, Decisions)
+- [ ] Calendar events section shows extracted events grouped by time
 - [ ] "Add to Calendar" adds event to iOS Calendar
-- [ ] RSVP dashboard shows correct counts
-- [ ] Deadlines view shows user's deadlines
-- [ ] All views have proper empty states
+- [ ] RSVP section shows correct counts and progress bars
+- [ ] Deadlines section shows tasks grouped by urgency
+- [ ] Decisions section shows recent group decisions
+- [ ] Tapping any card navigates to source conversation
+- [ ] Pull to refresh works on Digest tab
+- [ ] All sections have proper empty states
+- [ ] Badge on Digest tab shows total pending items count
 
 ---
 

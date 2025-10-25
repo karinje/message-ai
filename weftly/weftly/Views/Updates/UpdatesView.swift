@@ -14,22 +14,22 @@ struct UpdatesView: View {
                 Spacer()
                 
                 // Icon
-                Image(systemName: "circle.circle")
+                Image(systemName: "chart.bar.doc.horizontal")
                     .font(.system(size: 60))
-                    .foregroundStyle(.green.gradient)
+                    .foregroundStyle(.blue.gradient)
                 
                 // Title
-                Text("Updates")
+                Text("Digest")
                     .font(.title)
                     .fontWeight(.bold)
                 
                 // Description
                 VStack(spacing: 12) {
-                    Text("No updates yet")
+                    Text("Coming Soon")
                         .font(.headline)
                         .foregroundStyle(.secondary)
                     
-                    Text("Share photos, videos, and status updates that disappear after 24 hours")
+                    Text("AI-powered insights from your conversations: upcoming events, pending RSVPs, deadlines, and group decisions")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -38,31 +38,45 @@ struct UpdatesView: View {
                 
                 Spacer()
                 
-                // Add Status Button (disabled for now)
-                Button(action: {}) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                        Text("Add status")
-                    }
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                // Feature Sections Preview
+                VStack(alignment: .leading, spacing: 16) {
+                    DigestFeatureRow(icon: "calendar", title: "Upcoming Events", description: "Auto-extracted from messages")
+                    DigestFeatureRow(icon: "hand.raised", title: "Pending RSVPs", description: "Track who's responded")
+                    DigestFeatureRow(icon: "alarm", title: "Deadlines", description: "Never miss a commitment")
+                    DigestFeatureRow(icon: "lightbulb", title: "Group Decisions", description: "Summaries of what was decided")
                 }
-                .disabled(true)
-                .opacity(0.5)
-                .padding(.horizontal, 32)
-                
-                Text("Coming soon")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
                 
                 Spacer()
             }
-            .navigationTitle("Updates")
+            .navigationTitle("Digest")
             .navigationBarTitleDisplayMode(.large)
+        }
+    }
+}
+
+struct DigestFeatureRow: View {
+    let icon: String
+    let title: String
+    let description: String
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(.blue)
+                .frame(width: 40)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
         }
     }
 }

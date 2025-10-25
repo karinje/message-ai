@@ -447,6 +447,74 @@ class FirestoreService: ObservableObject {
         return try? document.data(as: User.self)
     }
     
+    // MARK: - AI Features
+    
+    func getExtractedEvents(conversationId: String) async throws -> [ExtractedEvent] {
+        let snapshot = try await db.collection("conversations")
+            .document(conversationId)
+            .collection("extractedEvents")
+            .order(by: "date", descending: false)
+            .getDocuments()
+        
+        return snapshot.documents.compactMap { doc in
+            try? doc.data(as: ExtractedEvent.self)
+        }
+    }
+    
+    func updateMessagePriority(
+        messageId: String,
+        conversationId: String,
+        priority: String,
+        reason: String,
+        confidence: Double
+    ) async throws {
+        try await db.collection("conversations")
+            .document(conversationId)
+            .collection("messages")
+            .document(messageId)
+            .updateData([
+                "priority": priority,
+                "priorityReason": reason,
+                "priorityConfidence": confidence
+            ])
+    }
+    
+    func getUserDeadlines(userId: String) async throws -> [Deadline] {
+        let snapshot = try await db.collection("users")
+            .document(userId)
+            .collection("deadlines")
+            .order(by: "dueDate", descending: false)
+            .getDocuments()
+        
+        return snapshot.documents.compactMap { doc in
+            try? doc.data(as: Deadline.self)
+        }
+    }
+    
+    func getDecisions(conversationId: String) async throws -> [AIDecision] {
+        let snapshot = try await db.collection("conversations")
+            .document(conversationId)
+            .collection("decisions")
+            .order(by: "timestamp", descending: true)
+            .getDocuments()
+        
+        return snapshot.documents.compactMap { doc in
+            try? doc.data(as: AIDecision.self)
+        }
+    }
+    
+    func getRSVPs(conversationId: String) async throws -> [RSVPResponse] {
+        let snapshot = try await db.collection("conversations")
+            .document(conversationId)
+            .collection("rsvps")
+            .order(by: "lastUpdated", descending: true)
+            .getDocuments()
+        
+        return snapshot.documents.compactMap { doc in
+            try? doc.data(as: RSVPResponse.self)
+        }
+    }
+    
     deinit {
         conversationListeners.values.forEach { $0.remove() }
         messageListeners.values.forEach { $0.remove() }

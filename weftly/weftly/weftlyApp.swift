@@ -20,7 +20,9 @@ struct weftlyApp: App {
         let schema = Schema([
             PendingMessage.self,
             LocalMessage.self,
-            LocalConversationState.self
+            LocalConversationState.self,
+            ExtractedEvent.self,
+            Deadline.self
         ])
         
         do {

@@ -14,28 +14,28 @@ struct MainTabView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Tab 4 (leftmost): AI
+            // Tab 1 (leftmost): Assistant - AI Chat
             AIView()
                 .tabItem {
-                    Label("AI", systemImage: "sparkles")
+                    Label("Assistant", systemImage: "sparkles")
                 }
                 .tag(0)
             
-            // Tab 3: Updates
+            // Tab 2: Digest - AI-extracted insights
             UpdatesView()
                 .tabItem {
-                    Label("Updates", systemImage: "circle.circle")
+                    Label("Digest", systemImage: "chart.bar.doc.horizontal")
                 }
                 .tag(1)
             
-            // Tab 2: Chats (main tab)
+            // Tab 3: Chats (main messaging tab)
             ChatListView(authService: authService, networkMonitor: networkMonitor)
                 .tabItem {
                     Label("Chats", systemImage: "message")
                 }
                 .tag(2)
             
-            // Tab 1 (rightmost): Settings
+            // Tab 4 (rightmost): Settings
             SettingsView(authService: authService)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
