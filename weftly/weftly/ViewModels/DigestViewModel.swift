@@ -199,6 +199,7 @@ class DigestViewModel: ObservableObject {
     }
     
     private func loadPriorityMessages() async {
+        print("🚀 loadPriorityMessages() called with \(conversationIds.count) conversation IDs")
         do {
             let messages = try await firestoreService.getPriorityMessages(conversationIds: conversationIds)
             print("✅ Loaded \(messages.count) priority messages")
