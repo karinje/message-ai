@@ -683,14 +683,48 @@ firebase functions:config:set \
      );
      ```
 
+#### **Implementation Notes (Completed):**
+
+**✅ Timezone Handling (Critical Fix):**
+- **Problem:** OpenAI was interpreting "tomorrow at 2pm" as UTC time, causing events to appear in the past for PST users
+- **Solution 1 - OpenAI Prompt Enhancement:**
+  - Added explicit timezone context to system prompt in `calendarExtraction.ts`
+  - Instructed AI to interpret times as Pacific Time and convert to UTC
+  - Example: "2pm PT" → "21:00 UTC" (during PDT) or "22:00 UTC" (during PST)
+  - Included current date/time in PT format for relative date calculations ("tomorrow", "next week")
+- **Solution 2 - Firestore Timestamp Storage:**
+  - Modified `utils/firestore.ts` `storeExtractedEvents()` function
+  - Convert ISO string dates to `admin.firestore.Timestamp.fromDate()` before storage
+  - Ensures proper date serialization/deserialization across platforms
+- **Solution 3 - iOS Date Decoding:**
+  - Updated `ExtractedEvent.swift` Codable implementation
+  - Handle both Firestore Timestamps and ISO8601 strings for backward compatibility
+  - Added debug logging in `FirestoreService.swift` for troubleshooting
+- **Result:** Events now correctly stored and displayed in user's local timezone
+
+**⚠️ Known Issue - `addedToCalendar` Tracking:**
+- **Current:** Single `addedToCalendar: Bool` on event (shared across all participants)
+- **Problem:** If User A adds event to calendar, button shows "Added" for ALL users
+- **Proper Fix:** Change to `addedByUsers: [String]` (array of user IDs)
+- **Status:** Deferred to future polish pass (not blocking for MVP)
+
+**📦 Simplified Implementation (Pinecone Deferred):**
+- Pinecone integration NOT implemented in PR #19 (will be added in PR #23/24 for RAG search)
+- Focus: Core calendar extraction + background processing only
+- Dependencies: OpenAI API only (GPT-4o-mini for extraction)
+
 #### **Verification Checklist:**
-- [ ] Functions project compiles: `npm run build`
-- [ ] Can deploy: `firebase deploy --only functions`
-- [ ] OpenAI client works (test with simple completion)
-- [ ] Pinecone client works (test with upsert + query)
-- [ ] Calendar extraction returns structured events
-- [ ] Events stored in Firestore correctly
-- [ ] iOS app can call function and display results
+- [x] Functions project compiles: `npm run build`
+- [x] Can deploy: `firebase deploy --only functions`
+- [x] OpenAI client works (timezone-aware completions)
+- [x] Calendar extraction returns structured events with correct dates/times
+- [x] Events stored in Firestore as Timestamps (not ISO strings)
+- [x] iOS app displays events correctly in Digest tab
+- [x] Background trigger (`onMessageCreated`) auto-extracts events
+- [x] "Add to Calendar" button integrates with iOS EventKit
+- [x] Timezone conversion handles PST/PDT correctly
+
+**Status: ✅ COMPLETE**
 
 ---
 

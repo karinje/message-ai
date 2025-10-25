@@ -116,18 +116,27 @@ export async function storeExtractedEvents(
       .collection("extractedEvents")
       .doc();
 
+    // Convert ISO string dates to Firestore Timestamps
+    const eventData: any = {
+      ...event,
+      id: docRef.id,
+      date: admin.firestore.Timestamp.fromDate(new Date(event.date)),
+      extractedAt: admin.firestore.Timestamp.now(),
+    };
+
+    // Remove undefined values (Firestore doesn't accept them)
+    const cleanedEvent = Object.fromEntries(
+      Object.entries(eventData).filter(([_, value]) => value !== undefined)
+    );
+
+    batch.set(docRef, cleanedEvent);
+    
+    // For return value, keep ISO strings
     const eventWithId: ExtractedEvent = {
       ...event,
       id: docRef.id,
       extractedAt: new Date().toISOString(),
     };
-
-    // Remove undefined values (Firestore doesn't accept them)
-    const cleanedEvent = Object.fromEntries(
-      Object.entries(eventWithId).filter(([_, value]) => value !== undefined)
-    );
-
-    batch.set(docRef, cleanedEvent);
     storedEvents.push(eventWithId);
   }
 

@@ -54,7 +54,17 @@ struct CalendarEventsSection: View {
     
     // MARK: - Grouped Events
     var upcomingEvents: [ExtractedEvent] {
-        events.filter { $0.date > Date() }.sorted { $0.date < $1.date }
+        let now = Date()
+        let filtered = events.filter { $0.date > now }.sorted { $0.date < $1.date }
+        
+        // Debug logging
+        print("📅 CalendarEventsSection: Total events: \(events.count), Upcoming: \(filtered.count)")
+        for event in events {
+            let isPast = event.date <= now
+            print("   - \(event.title): \(event.date) (isPast: \(isPast))")
+        }
+        
+        return filtered
     }
     
     var todayEvents: [ExtractedEvent] {

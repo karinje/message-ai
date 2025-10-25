@@ -456,8 +456,19 @@ class FirestoreService: ObservableObject {
             .order(by: "date", descending: false)
             .getDocuments()
         
+        print("📥 Fetching extracted events for conversation: \(conversationId)")
+        print("📦 Found \(snapshot.documents.count) event documents")
+        
         return snapshot.documents.compactMap { doc in
-            try? doc.data(as: ExtractedEvent.self)
+            print("🔍 Document \(doc.documentID) data: \(doc.data())")
+            do {
+                let event = try doc.data(as: ExtractedEvent.self)
+                print("✅ Decoded event: \(event.title) at \(event.date)")
+                return event
+            } catch {
+                print("❌ Failed to decode event: \(error)")
+                return nil
+            }
         }
     }
     
