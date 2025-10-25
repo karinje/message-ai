@@ -115,7 +115,7 @@ struct SectionGroup: View {
                 conversationId: "456"
             )
         ],
-        viewModel: DigestViewModel()
+        viewModel: DigestViewModel(authService: AuthService())
     )
     .padding()
 }

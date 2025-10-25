@@ -1,7 +1,11 @@
 import SwiftUI
 
 struct DigestView: View {
-    @StateObject private var viewModel = DigestViewModel()
+    @StateObject private var viewModel: DigestViewModel
+    
+    init(authService: AuthService) {
+        _viewModel = StateObject(wrappedValue: DigestViewModel(authService: authService))
+    }
     
     var body: some View {
         NavigationStack {
@@ -88,6 +92,6 @@ struct DigestView: View {
 }
 
 #Preview {
-    DigestView()
+    DigestView(authService: AuthService())
 }
 

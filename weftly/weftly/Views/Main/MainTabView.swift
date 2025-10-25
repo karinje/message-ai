@@ -22,7 +22,7 @@ struct MainTabView: View {
                 .tag(0)
             
             // Tab 2: Digest - AI-extracted insights
-            DigestView()
+            DigestView(authService: authService)
                 .tabItem {
                     Label("Digest", systemImage: "chart.bar.doc.horizontal")
                 }

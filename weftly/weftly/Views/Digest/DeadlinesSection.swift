@@ -144,7 +144,7 @@ struct DeadlineGroup: View {
                 confidence: 0.85
             )
         ],
-        viewModel: DigestViewModel()
+        viewModel: DigestViewModel(authService: AuthService())
     )
     .padding()
 }

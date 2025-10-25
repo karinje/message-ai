@@ -15,8 +15,12 @@ class DigestViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     private let aiService = AIService.shared
+    private let firestoreService = FirestoreService()
+    private let authService: AuthService
+    private var conversationIds: [String] = []
     
-    init() {
+    init(authService: AuthService) {
+        self.authService = authService
         Task {
             await loadAllInsights()
         }
@@ -42,27 +46,114 @@ class DigestViewModel: ObservableObject {
     }
     
     private func loadEvents() async {
-        // TODO: Load from all conversations
-        // For now, empty list
-        events = []
+        guard let currentUserId = authService.currentUser?.id else {
+            print("❌ No current user for loading events")
+            return
+        }
+        
+        // Get conversation IDs if we don't have them yet
+        if conversationIds.isEmpty {
+            await loadConversationIds()
+        }
+        
+        var allEvents: [ExtractedEvent] = []
+        
+        // Fetch events from each conversation
+        for conversationId in conversationIds {
+            do {
+                let conversationEvents = try await aiService.getExtractedEvents(for: conversationId)
+                allEvents.append(contentsOf: conversationEvents)
+            } catch {
+                print("❌ Error loading events from conversation \(conversationId): \(error)")
+            }
+        }
+        
+        // Sort by date (upcoming first)
+        events = allEvents.sorted { $0.date < $1.date }
+        print("✅ Loaded \(events.count) calendar events")
     }
     
     private func loadRSVPs() async {
-        // TODO: Load from all conversations
-        // For now, empty list
-        rsvps = []
+        guard let currentUserId = authService.currentUser?.id else {
+            print("❌ No current user for loading RSVPs")
+            return
+        }
+        
+        if conversationIds.isEmpty {
+            await loadConversationIds()
+        }
+        
+        var allRSVPs: [RSVPResponse] = []
+        
+        for conversationId in conversationIds {
+            do {
+                if let rsvp = try await aiService.getRSVPs(for: conversationId) {
+                    allRSVPs.append(rsvp)
+                }
+            } catch {
+                print("❌ Error loading RSVPs from conversation \(conversationId): \(error)")
+            }
+        }
+        
+        rsvps = allRSVPs.sorted { $0.eventDate < $1.eventDate }
+        print("✅ Loaded \(rsvps.count) RSVPs")
     }
     
     private func loadDeadlines() async {
-        // TODO: Get current user ID and load their deadlines
-        // For now, empty list
-        deadlines = []
+        guard let currentUserId = authService.currentUser?.id else {
+            print("❌ No current user for loading deadlines")
+            return
+        }
+        
+        do {
+            deadlines = try await aiService.getUserDeadlines(userId: currentUserId)
+            deadlines.sort { $0.dueDate < $1.dueDate }
+            print("✅ Loaded \(deadlines.count) deadlines")
+        } catch {
+            print("❌ Error loading deadlines: \(error)")
+        }
     }
     
     private func loadDecisions() async {
-        // TODO: Load from all conversations
-        // For now, empty list
-        decisions = []
+        guard let currentUserId = authService.currentUser?.id else {
+            print("❌ No current user for loading decisions")
+            return
+        }
+        
+        if conversationIds.isEmpty {
+            await loadConversationIds()
+        }
+        
+        var allDecisions: [AIDecision] = []
+        
+        for conversationId in conversationIds {
+            do {
+                let conversationDecisions = try await aiService.getDecisions(for: conversationId)
+                allDecisions.append(contentsOf: conversationDecisions)
+            } catch {
+                print("❌ Error loading decisions from conversation \(conversationId): \(error)")
+            }
+        }
+        
+        decisions = allDecisions.sorted { $0.timestamp > $1.timestamp }
+        print("✅ Loaded \(decisions.count) decisions")
+    }
+    
+    private func loadConversationIds() async {
+        await withCheckedContinuation { continuation in
+            guard let currentUserId = authService.currentUser?.id else {
+                continuation.resume()
+                return
+            }
+            
+            firestoreService.listenToConversations(userId: currentUserId) { [weak self] conversations in
+                self?.conversationIds = conversations.compactMap { $0.id }
+                print("✅ Loaded \(conversations.count) conversation IDs")
+                // Remove listener after first load
+                self?.firestoreService.removeConversationListener()
+                continuation.resume()
+            }
+        }
     }
     
     func refresh() async {
