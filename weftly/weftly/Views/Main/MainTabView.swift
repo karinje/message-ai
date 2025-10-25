@@ -15,14 +15,14 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Tab 1 (leftmost): Assistant - AI Chat
-            AIView()
+            AssistantChatView()
                 .tabItem {
                     Label("Assistant", systemImage: "sparkles")
                 }
                 .tag(0)
             
             // Tab 2: Digest - AI-extracted insights
-            UpdatesView()
+            DigestView()
                 .tabItem {
                     Label("Digest", systemImage: "chart.bar.doc.horizontal")
                 }

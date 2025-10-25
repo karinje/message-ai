@@ -1,5 +1,6 @@
 import Foundation
 import EventKit
+import Combine
 
 enum CalendarError: Error {
     case accessDenied
@@ -161,8 +162,7 @@ class CalendarService: ObservableObject {
         
         return events.contains { event in
             // Check if event overlaps with proposed time
-            let eventStart = event.startDate
-            let eventEnd = event.endDate
+            guard let eventStart = event.startDate, let eventEnd = event.endDate else { return false }
             
             return (date >= eventStart && date < eventEnd) ||
                    (endDate > eventStart && endDate <= eventEnd) ||
@@ -175,8 +175,7 @@ class CalendarService: ObservableObject {
         let endDate = date.addingTimeInterval(duration)
         
         return events.filter { event in
-            let eventStart = event.startDate
-            let eventEnd = event.endDate
+            guard let eventStart = event.startDate, let eventEnd = event.endDate else { return false }
             
             return (date >= eventStart && date < eventEnd) ||
                    (endDate > eventStart && endDate <= eventEnd) ||

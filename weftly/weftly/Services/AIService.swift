@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import Combine
 
 @MainActor
 class AIService: ObservableObject {
@@ -7,6 +8,7 @@ class AIService: ObservableObject {
     
     private let functionsService = FunctionsService.shared
     private let calendarService = CalendarService.shared
+    private let firestoreService = FirestoreService()
     
     // Cache with 5-minute TTL
     private var eventCache: [String: (events: [ExtractedEvent], timestamp: Date)] = [:]
@@ -65,7 +67,7 @@ class AIService: ObservableObject {
             let events = try await functionsService.extractCalendarEvents(
                 messageText: message.text,
                 conversationId: message.conversationId,
-                messageId: message.id
+                messageId: message.id ?? UUID().uuidString
             )
             
             if !events.isEmpty {
@@ -87,7 +89,7 @@ class AIService: ObservableObject {
         }
         
         // Fetch from Firestore
-        let events = try await FirestoreService.shared.getExtractedEvents(conversationId: conversationId)
+        let events = try await firestoreService.getExtractedEvents(conversationId: conversationId)
         
         // Update cache
         eventCache[conversationId] = (events, Date())
@@ -107,8 +109,8 @@ class AIService: ObservableObject {
                 print("🚨 Priority detected: \(priority.level) (\(Int(priority.confidence * 100))%)")
                 
                 // Update message in Firestore
-                try await FirestoreService.shared.updateMessagePriority(
-                    messageId: message.id,
+                try await firestoreService.updateMessagePriority(
+                    messageId: message.id ?? UUID().uuidString,
                     conversationId: message.conversationId,
                     priority: priority.level,
                     reason: priority.reason,
@@ -184,7 +186,7 @@ class AIService: ObservableObject {
             let deadlines = try await functionsService.extractDeadlines(
                 messageText: message.text,
                 conversationId: message.conversationId,
-                messageId: message.id
+                messageId: message.id ?? UUID().uuidString
             )
             
             if !deadlines.isEmpty {
@@ -197,7 +199,7 @@ class AIService: ObservableObject {
     }
     
     func getUserDeadlines(userId: String) async throws -> [Deadline] {
-        try await FirestoreService.shared.getUserDeadlines(userId: userId)
+        try await firestoreService.getUserDeadlines(userId: userId)
     }
     
     // MARK: - Settings Management

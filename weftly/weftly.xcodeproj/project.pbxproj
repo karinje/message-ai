@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F023F27F2EAC7A6D00F30462 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = F023F27E2EAC7A6D00F30462 /* FirebaseFunctions */; };
 		F0710B4F2EA831A700EBF6ED /* Nuke in Frameworks */ = {isa = PBXBuildFile; productRef = F0710B4E2EA831A700EBF6ED /* Nuke */; };
 		F0710B512EA831A700EBF6ED /* NukeExtensions in Frameworks */ = {isa = PBXBuildFile; productRef = F0710B502EA831A700EBF6ED /* NukeExtensions */; };
 		F0710B532EA831A700EBF6ED /* NukeUI in Frameworks */ = {isa = PBXBuildFile; productRef = F0710B522EA831A700EBF6ED /* NukeUI */; };
@@ -88,6 +89,7 @@
 				F0710B532EA831A700EBF6ED /* NukeUI in Frameworks */,
 				F0710B552EA831A700EBF6ED /* NukeVideo in Frameworks */,
 				F08DE5562EA726CF000ED503 /* FirebaseAuth in Frameworks */,
+				F023F27F2EAC7A6D00F30462 /* FirebaseFunctions in Frameworks */,
 				F08DE5582EA726CF000ED503 /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -109,6 +111,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		F023F27D2EAC7A6D00F30462 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		F08DE51D2EA72001000ED503 = {
 			isa = PBXGroup;
 			children = (
@@ -116,6 +125,7 @@
 				F08DE5282EA72002000ED503 /* weftly */,
 				F08DE5362EA72005000ED503 /* weftlyTests */,
 				F08DE5402EA72005000ED503 /* weftlyUITests */,
+				F023F27D2EAC7A6D00F30462 /* Frameworks */,
 				F08DE5272EA72002000ED503 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -160,6 +170,7 @@
 				F0710B502EA831A700EBF6ED /* NukeExtensions */,
 				F0710B522EA831A700EBF6ED /* NukeUI */,
 				F0710B542EA831A700EBF6ED /* NukeVideo */,
+				F023F27E2EAC7A6D00F30462 /* FirebaseFunctions */,
 			);
 			productName = weftly;
 			productReference = F08DE5262EA72002000ED503 /* weftly.app */;
@@ -660,6 +671,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		F023F27E2EAC7A6D00F30462 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F08DE5542EA726CF000ED503 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
 		F0710B4E2EA831A700EBF6ED /* Nuke */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F0710B4D2EA831A700EBF6ED /* XCRemoteSwiftPackageReference "Nuke" */;
