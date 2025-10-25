@@ -49,14 +49,34 @@ final class ExtractedEvent: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
         self.title = try container.decode(String.self, forKey: .title)
-        self.date = try container.decode(Date.self, forKey: .date)
+        
+        // Handle both Firestore Timestamp and ISO string dates
+        if let date = try? container.decode(Date.self, forKey: .date) {
+            self.date = date
+        } else if let dateString = try? container.decode(String.self, forKey: .date) {
+            let formatter = ISO8601DateFormatter()
+            self.date = formatter.date(from: dateString) ?? Date()
+        } else {
+            self.date = Date()
+        }
+        
         self.location = try container.decodeIfPresent(String.self, forKey: .location)
         self.confidence = try container.decode(Double.self, forKey: .confidence)
         self.addedToCalendar = try container.decode(Bool.self, forKey: .addedToCalendar)
         self.messageId = try container.decode(String.self, forKey: .messageId)
         self.conversationId = try container.decode(String.self, forKey: .conversationId)
-        self.extractedAt = try container.decode(Date.self, forKey: .extractedAt)
-        self.notified = try container.decode(Bool.self, forKey: .notified)
+        
+        // Handle extractedAt date similarly
+        if let extractedAt = try? container.decode(Date.self, forKey: .extractedAt) {
+            self.extractedAt = extractedAt
+        } else if let extractedAtString = try? container.decode(String.self, forKey: .extractedAt) {
+            let formatter = ISO8601DateFormatter()
+            self.extractedAt = formatter.date(from: extractedAtString) ?? Date()
+        } else {
+            self.extractedAt = Date()
+        }
+        
+        self.notified = (try? container.decode(Bool.self, forKey: .notified)) ?? false
     }
     
     func encode(to encoder: Encoder) throws {
