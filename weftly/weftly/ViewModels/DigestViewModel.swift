@@ -9,6 +9,7 @@ class DigestViewModel: ObservableObject {
     @Published var rsvps: [RSVPResponse] = []
     @Published var deadlines: [Deadline] = []
     @Published var decisions: [AIDecision] = []
+    @Published var priorityMessages: [PriorityMessage] = []
     
     @Published var isLoading = false
     @Published var lastRefreshed: Date?
@@ -38,11 +39,13 @@ class DigestViewModel: ObservableObject {
         async let rsvpsTask = loadRSVPs()
         async let deadlinesTask = loadDeadlines()
         async let decisionsTask = loadDecisions()
+        async let priorityMessagesTask = loadPriorityMessages()
         
         await eventsTask
         await rsvpsTask
         await deadlinesTask
         await decisionsTask
+        await priorityMessagesTask
         
         lastRefreshed = Date()
         isLoading = false
@@ -192,6 +195,16 @@ class DigestViewModel: ObservableObject {
             }
         } catch {
             errorMessage = "Failed to add event to calendar: \(error.localizedDescription)"
+        }
+    }
+    
+    private func loadPriorityMessages() async {
+        do {
+            let messages = try await firestoreService.getPriorityMessages(conversationIds: conversationIds)
+            print("✅ Loaded \(messages.count) priority messages")
+            self.priorityMessages = messages
+        } catch {
+            print("❌ Error loading priority messages: \(error)")
         }
     }
     

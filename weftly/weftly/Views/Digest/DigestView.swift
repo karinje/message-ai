@@ -11,7 +11,8 @@ struct DigestView: View {
         NavigationStack {
             ZStack {
                 if viewModel.events.isEmpty && viewModel.rsvps.isEmpty &&
-                   viewModel.deadlines.isEmpty && viewModel.decisions.isEmpty && !viewModel.isLoading {
+                   viewModel.deadlines.isEmpty && viewModel.decisions.isEmpty &&
+                   viewModel.priorityMessages.isEmpty && !viewModel.isLoading {
                     // Empty State
                     VStack(spacing: 24) {
                         Image(systemName: "chart.bar.doc.horizontal")
@@ -22,7 +23,7 @@ struct DigestView: View {
                             .font(.title2)
                             .fontWeight(.semibold)
                         
-                        Text("Start chatting and AI will automatically extract events, RSVPs, deadlines, and decisions from your conversations")
+                        Text("Start chatting and AI will automatically extract urgent messages, events, RSVPs, deadlines, and decisions from your conversations")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -32,6 +33,11 @@ struct DigestView: View {
                     // Content
                     ScrollView {
                         LazyVStack(spacing: 16) {
+                            // Priority Messages Section (show at top - most urgent)
+                            if !viewModel.priorityMessages.isEmpty {
+                                PriorityMessagesSection(messages: viewModel.priorityMessages)
+                            }
+                            
                             // Calendar Events Section
                             if !viewModel.events.isEmpty {
                                 CalendarEventsSection(events: viewModel.events, viewModel: viewModel)

@@ -526,6 +526,83 @@ class FirestoreService: ObservableObject {
         }
     }
     
+    // MARK: - Priority Messages
+    
+    /// Fetch urgent/important messages from the last 48 hours across all conversations
+    func getPriorityMessages(conversationIds: [String]) async throws -> [PriorityMessage] {
+        guard !conversationIds.isEmpty else {
+            print("⚠️ No conversation IDs provided for priority messages")
+            return []
+        }
+        
+        print("🔍 Fetching priority messages from \(conversationIds.count) conversations")
+        
+        // Get messages from last 48 hours only
+        let cutoffDate = Calendar.current.date(byAdding: .hour, value: -48, to: Date()) ?? Date()
+        print("📅 Cutoff date: \(cutoffDate)")
+        
+        var allPriorityMessages: [PriorityMessage] = []
+        
+        for conversationId in conversationIds {
+            print("🔍 Checking conversation: \(conversationId)")
+            
+            let snapshot = try await db.collection("conversations")
+                .document(conversationId)
+                .collection("messages")
+                .whereField("timestamp", isGreaterThan: Timestamp(date: cutoffDate))
+                .whereField("priority", in: ["urgent", "important"])
+                .order(by: "timestamp", descending: true)
+                .limit(to: 20)
+                .getDocuments()
+            
+            print("📦 Found \(snapshot.documents.count) messages with priority field in \(conversationId)")
+            
+            let messages = snapshot.documents.compactMap { doc -> PriorityMessage? in
+                let data = doc.data()
+                print("📄 Document \(doc.documentID): \(data)")
+                
+                guard let text = data["text"] as? String,
+                      let senderId = data["senderId"] as? String,
+                      let senderName = data["senderName"] as? String,
+                      let priority = data["priority"] as? String,
+                      let priorityReason = data["priorityReason"] as? String,
+                      let priorityConfidence = data["priorityConfidence"] as? Double,
+                      let timestamp = (data["timestamp"] as? Timestamp)?.dateValue() else {
+                    print("❌ Failed to decode priority message from \(doc.documentID)")
+                    print("   - text: \(data["text"] != nil)")
+                    print("   - senderId: \(data["senderId"] != nil)")
+                    print("   - senderName: \(data["senderName"] != nil)")
+                    print("   - priority: \(data["priority"] != nil)")
+                    print("   - priorityReason: \(data["priorityReason"] != nil)")
+                    print("   - priorityConfidence: \(data["priorityConfidence"] != nil)")
+                    print("   - timestamp: \(data["timestamp"] != nil)")
+                    return nil
+                }
+                
+                print("✅ Decoded priority message: \(priority) - \(text.prefix(50))")
+                
+                return PriorityMessage(
+                    id: doc.documentID,
+                    conversationId: conversationId,
+                    senderId: senderId,
+                    senderName: senderName,
+                    text: text,
+                    timestamp: timestamp,
+                    priority: priority,
+                    priorityReason: priorityReason,
+                    priorityConfidence: priorityConfidence
+                )
+            }
+            
+            allPriorityMessages.append(contentsOf: messages)
+        }
+        
+        print("✅ Total priority messages found: \(allPriorityMessages.count)")
+        
+        // Sort by timestamp (most recent first)
+        return allPriorityMessages.sorted { $0.timestamp > $1.timestamp }
+    }
+    
     deinit {
         conversationListeners.values.forEach { $0.remove() }
         messageListeners.values.forEach { $0.remove() }
