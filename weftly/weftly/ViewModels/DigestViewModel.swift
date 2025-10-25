@@ -30,7 +30,10 @@ class DigestViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        // Load all sections in parallel
+        // Load conversation IDs FIRST (once) to avoid race conditions
+        await loadConversationIds()
+        
+        // Now load all sections in parallel
         async let eventsTask = loadEvents()
         async let rsvpsTask = loadRSVPs()
         async let deadlinesTask = loadDeadlines()
@@ -49,11 +52,6 @@ class DigestViewModel: ObservableObject {
         guard let currentUserId = authService.currentUser?.id else {
             print("❌ No current user for loading events")
             return
-        }
-        
-        // Get conversation IDs if we don't have them yet
-        if conversationIds.isEmpty {
-            await loadConversationIds()
         }
         
         var allEvents: [ExtractedEvent] = []
@@ -77,10 +75,6 @@ class DigestViewModel: ObservableObject {
         guard let currentUserId = authService.currentUser?.id else {
             print("❌ No current user for loading RSVPs")
             return
-        }
-        
-        if conversationIds.isEmpty {
-            await loadConversationIds()
         }
         
         var allRSVPs: [RSVPResponse] = []
@@ -120,10 +114,6 @@ class DigestViewModel: ObservableObject {
             return
         }
         
-        if conversationIds.isEmpty {
-            await loadConversationIds()
-        }
-        
         var allDecisions: [AIDecision] = []
         
         for conversationId in conversationIds {
@@ -140,17 +130,25 @@ class DigestViewModel: ObservableObject {
     }
     
     private func loadConversationIds() async {
-        await withCheckedContinuation { continuation in
-            guard let currentUserId = authService.currentUser?.id else {
-                continuation.resume()
-                return
-            }
+        guard let currentUserId = authService.currentUser?.id else {
+            print("❌ No current user for loading conversation IDs")
+            return
+        }
+        
+        // Use a one-shot listener approach with Task
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var hasResumed = false
             
             firestoreService.listenToConversations(userId: currentUserId) { [weak self] conversations in
+                guard !hasResumed else { return } // Prevent multiple resumes
+                hasResumed = true
+                
                 self?.conversationIds = conversations.compactMap { $0.id }
-                print("✅ Loaded \(conversations.count) conversation IDs")
-                // Remove listener after first load
+                print("✅ Loaded \(conversations.count) conversation IDs for Digest")
+                
+                // Remove listener immediately
                 self?.firestoreService.removeConversationListener()
+                
                 continuation.resume()
             }
         }
