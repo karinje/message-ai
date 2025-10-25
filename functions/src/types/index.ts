@@ -78,6 +78,7 @@ export interface Deadline {
   confidence: number;
   createdAt: Date | string;
   reminderSent: boolean;
+  dismissedBy?: string[]; // Array of user IDs who dismissed this deadline
 }
 
 export interface AIDecision {

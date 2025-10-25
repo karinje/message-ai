@@ -3,6 +3,7 @@ import SwiftUI
 struct DeadlineCardView: View {
     let deadline: Deadline
     let onComplete: () -> Void
+    var onDismiss: (() -> Void)? = nil
     
     var body: some View {
         HStack(spacing: 12) {
@@ -54,6 +55,16 @@ struct DeadlineCardView: View {
             }
             
             Spacer()
+            
+            // Dismiss button
+            if let onDismiss = onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(12)
         .background(deadline.isOverdue() ? Color.red.opacity(0.1) : Color(.systemGray6))

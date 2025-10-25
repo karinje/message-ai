@@ -109,6 +109,7 @@ export async function extractDeadlines(data: {
         confidence: d.confidence,
         createdAt: new Date().toISOString(),
         reminderSent: false,
+        dismissedBy: [], // Initialize empty array for dismissal tracking
       }));
 
     if (deadlines.length > 0) {

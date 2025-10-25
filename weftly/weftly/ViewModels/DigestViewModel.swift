@@ -282,6 +282,22 @@ class DigestViewModel: ObservableObject {
         }
     }
     
+    func dismissDeadline(_ deadline: Deadline) async {
+        guard let currentUserId = authService.currentUser?.id else { return }
+        
+        do {
+            try await firestoreService.dismissDeadline(
+                deadlineId: deadline.id,
+                userId: currentUserId
+            )
+            // Remove from local list
+            deadlines.removeAll { $0.id == deadline.id }
+        } catch {
+            print("❌ Error dismissing deadline: \(error)")
+            errorMessage = "Failed to dismiss deadline"
+        }
+    }
+    
     // MARK: - Deadline Actions
     func markDeadlineComplete(_ deadline: Deadline) async {
         deadline.completed = true

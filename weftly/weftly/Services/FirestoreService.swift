@@ -500,15 +500,36 @@ class FirestoreService: ObservableObject {
     }
     
     func getUserDeadlines(userId: String) async throws -> [Deadline] {
+        print("🔍 Fetching deadlines for user: \(userId)")
         let snapshot = try await db.collection("users")
             .document(userId)
             .collection("deadlines")
             .order(by: "dueDate", descending: false)
             .getDocuments()
         
-        return snapshot.documents.compactMap { doc in
-            try? doc.data(as: Deadline.self)
+        print("📦 Found \(snapshot.documents.count) deadline documents")
+        
+        let allDeadlines = snapshot.documents.compactMap { doc -> Deadline? in
+            let data = doc.data()
+            let dismissedBy = data["dismissedBy"] as? [String]
+            print("   - Deadline \(doc.documentID): dismissedBy = \(dismissedBy ?? [])")
+            
+            guard let deadline = try? doc.data(as: Deadline.self) else {
+                print("   ❌ Failed to decode deadline \(doc.documentID)")
+                return nil
+            }
+            return deadline
         }
+        
+        // Filter out deadlines dismissed by current user
+        let visibleDeadlines = allDeadlines.filter { deadline in
+            let isDismissed = deadline.isDismissedBy(userId: userId)
+            print("   - Deadline '\(deadline.task)': isDismissed = \(isDismissed)")
+            return !isDismissed
+        }
+        print("📊 Deadlines: \(allDeadlines.count) total, \(visibleDeadlines.count) visible after filtering")
+        
+        return visibleDeadlines
     }
     
     func getDecisions(conversationId: String) async throws -> [AIDecision] {
@@ -588,7 +609,11 @@ class FirestoreService: ObservableObject {
                     return nil
                 }
                 
+                // Extract dismissedBy array if it exists
+                let dismissedBy = data["dismissedBy"] as? [String]
+                
                 print("✅ Decoded priority message: \(priority) - \(text.prefix(50))")
+                print("   dismissedBy: \(dismissedBy ?? [])")
                 
                 return PriorityMessage(
                     id: doc.documentID,
@@ -599,7 +624,8 @@ class FirestoreService: ObservableObject {
                     timestamp: timestamp,
                     priority: priority,
                     priorityReason: priorityReason,
-                    priorityConfidence: priorityConfidence
+                    priorityConfidence: priorityConfidence,
+                    dismissedBy: dismissedBy
                 )
             }
             
@@ -623,11 +649,26 @@ class FirestoreService: ObservableObject {
             .collection("messages")
             .document(messageId)
         
-        try await docRef.updateData([
-            "dismissedBy": FieldValue.arrayUnion([userId])
-        ])
+        print("🔄 Dismissing priority message: \(messageId) for user: \(userId)")
+        print("   Path: conversations/\(conversationId)/messages/\(messageId)")
         
-        print("✅ Priority message dismissed: \(messageId)")
+        do {
+            try await docRef.updateData([
+                "dismissedBy": FieldValue.arrayUnion([userId])
+            ])
+            print("✅ Priority message dismissed successfully")
+            
+            // Verify the update
+            let doc = try await docRef.getDocument()
+            if let dismissedBy = doc.data()?["dismissedBy"] as? [String] {
+                print("   dismissedBy now contains: \(dismissedBy)")
+            } else {
+                print("⚠️ dismissedBy field not found after update!")
+            }
+        } catch {
+            print("❌ Error dismissing priority message: \(error)")
+            throw error
+        }
     }
     
     /// Dismiss a calendar event for the current user
@@ -637,11 +678,55 @@ class FirestoreService: ObservableObject {
             .collection("extractedEvents")
             .document(eventId)
         
-        try await docRef.updateData([
-            "dismissedBy": FieldValue.arrayUnion([userId])
-        ])
+        print("🔄 Dismissing event: \(eventId) for user: \(userId)")
+        print("   Path: conversations/\(conversationId)/extractedEvents/\(eventId)")
         
-        print("✅ Event dismissed: \(eventId)")
+        do {
+            try await docRef.updateData([
+                "dismissedBy": FieldValue.arrayUnion([userId])
+            ])
+            print("✅ Event dismissed successfully")
+            
+            // Verify the update
+            let doc = try await docRef.getDocument()
+            if let dismissedBy = doc.data()?["dismissedBy"] as? [String] {
+                print("   dismissedBy now contains: \(dismissedBy)")
+            } else {
+                print("⚠️ dismissedBy field not found after update!")
+            }
+        } catch {
+            print("❌ Error dismissing event: \(error)")
+            throw error
+        }
+    }
+    
+    /// Dismiss a deadline for the current user
+    func dismissDeadline(deadlineId: String, userId: String) async throws {
+        let docRef = db.collection("users")
+            .document(userId)
+            .collection("deadlines")
+            .document(deadlineId)
+        
+        print("🔄 Dismissing deadline: \(deadlineId) for user: \(userId)")
+        print("   Path: users/\(userId)/deadlines/\(deadlineId)")
+        
+        do {
+            try await docRef.updateData([
+                "dismissedBy": FieldValue.arrayUnion([userId])
+            ])
+            print("✅ Deadline dismissed successfully")
+            
+            // Verify the update
+            let doc = try await docRef.getDocument()
+            if let dismissedBy = doc.data()?["dismissedBy"] as? [String] {
+                print("   dismissedBy now contains: \(dismissedBy)")
+            } else {
+                print("⚠️ dismissedBy field not found after update!")
+            }
+        } catch {
+            print("❌ Error dismissing deadline: \(error)")
+            throw error
+        }
     }
     
     deinit {

@@ -19,6 +19,7 @@ final class Deadline: Codable {
     var confidence: Double
     var createdAt: Date
     var reminderSent: Bool
+    var dismissedBy: [String]? // Array of user IDs who dismissed this deadline
     
     var priorityEnum: DeadlinePriority {
         get { DeadlinePriority(rawValue: priority) ?? .medium }
@@ -35,7 +36,8 @@ final class Deadline: Codable {
         completed: Bool = false,
         confidence: Double,
         createdAt: Date = Date(),
-        reminderSent: Bool = false
+        reminderSent: Bool = false,
+        dismissedBy: [String]? = nil
     ) {
         self.id = id
         self.task = task
@@ -47,6 +49,7 @@ final class Deadline: Codable {
         self.confidence = confidence
         self.createdAt = createdAt
         self.reminderSent = reminderSent
+        self.dismissedBy = dismissedBy
     }
     
     // MARK: - Helper Methods
@@ -66,10 +69,14 @@ final class Deadline: Codable {
         Calendar.current.dateComponents([.day], from: Date(), to: dueDate).day ?? 0
     }
     
+    func isDismissedBy(userId: String) -> Bool {
+        dismissedBy?.contains(userId) ?? false
+    }
+    
     // MARK: - Codable
     enum CodingKeys: String, CodingKey {
         case id, task, dueDate, priority, conversationId
-        case messageId, completed, confidence, createdAt, reminderSent
+        case messageId, completed, confidence, createdAt, reminderSent, dismissedBy
     }
     
     required init(from decoder: Decoder) throws {
@@ -84,6 +91,7 @@ final class Deadline: Codable {
         self.confidence = try container.decode(Double.self, forKey: .confidence)
         self.createdAt = try container.decode(Date.self, forKey: .createdAt)
         self.reminderSent = try container.decode(Bool.self, forKey: .reminderSent)
+        self.dismissedBy = try container.decodeIfPresent([String].self, forKey: .dismissedBy)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -98,6 +106,7 @@ final class Deadline: Codable {
         try container.encode(confidence, forKey: .confidence)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(reminderSent, forKey: .reminderSent)
+        try container.encodeIfPresent(dismissedBy, forKey: .dismissedBy)
     }
 }
 

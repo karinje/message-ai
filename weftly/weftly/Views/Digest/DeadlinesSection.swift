@@ -114,11 +114,19 @@ struct DeadlineGroup: View {
                 .padding(.top, 8)
             
             ForEach(deadlines) { deadline in
-                DeadlineCardView(deadline: deadline, onComplete: {
-                    Task {
-                        await viewModel.markDeadlineComplete(deadline)
+                DeadlineCardView(
+                    deadline: deadline,
+                    onComplete: {
+                        Task {
+                            await viewModel.markDeadlineComplete(deadline)
+                        }
+                    },
+                    onDismiss: {
+                        Task {
+                            await viewModel.dismissDeadline(deadline)
+                        }
                     }
-                })
+                )
             }
         }
     }
