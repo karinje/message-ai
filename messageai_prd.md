@@ -628,6 +628,484 @@ Toggle ON:
 
 ---
 
+## Message & Conversation Deletion Strategy ✅ IMPLEMENTED (Oct 25, 2025)
+
+### Overview
+
+**Core Principle:** Firestore is a temporary delivery layer. Deletion affects LOCAL SwiftData only. Firestore is never modified for deletion operations (planned 24-hour cleanup handles removal automatically).
+
+**Key Components:**
+1. **Local-only deletion** - Only SwiftData is modified
+2. **Dual tombstone system** - Prevents re-caching of deleted items
+3. **Per-user deletion** - Multi-device safe (each user's local state independent)
+4. **Smart composition flow** - Handles empty/deleted conversations gracefully
+
+---
+
+### Deletion Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      DELETION FLOW                              │
+└─────────────────────────────────────────────────────────────────┘
+
+User Action: Delete Message or Delete Conversation
+                              ↓
+        ┌─────────────────────────────────────────┐
+        │    LOCAL SWIFTDATA DELETION             │
+        │  • Delete LocalMessage object(s)        │
+        │  • Mark tombstone(s) in                 │
+        │    LocalConversationState               │
+        └─────────────────────────────────────────┘
+                              ↓
+        ┌─────────────────────────────────────────┐
+        │    FIRESTORE (NO CHANGES)               │
+        │  • Messages remain in Firestore         │
+        │  • 24-hour cleanup (future) handles it  │
+        │  • Listeners stay active                │
+        └─────────────────────────────────────────┘
+                              ↓
+        ┌─────────────────────────────────────────┐
+        │    TOMBSTONE PROTECTION                 │
+        │  • saveMessage() checks tombstones      │
+        │  • Skips re-caching deleted items       │
+        │  • UI never sees deleted items again    │
+        └─────────────────────────────────────────┘
+```
+
+---
+
+### Tombstone System (Dual-Layer Protection)
+
+**LocalConversationState Model:**
+```swift
+@Model
+final class LocalConversationState {
+    @Attribute(.unique) var uniqueId: String  // conversationId + userId
+    var conversationId: String
+    var userId: String
+    var lastReadTimestamp: Date      
+    var lastViewedTimestamp: Date    
+    var deletedAt: Date?             // Conversation deletion timestamp
+    var deletedMessageIds: [String]  // Individual message deletion list
+}
+```
+
+**Two Types of Tombstones:**
+
+1. **Conversation-level deletion** (`deletedAt` timestamp):
+   - Set when entire conversation is deleted
+   - Filters out ALL messages with `timestamp < deletedAt`
+   - Allows new messages (timestamp > deletedAt) to appear
+   - Use case: User deletes conversation, then receives new message from same contact
+
+2. **Message-level deletion** (`deletedMessageIds` array):
+   - Set when individual message is deleted
+   - Filters out specific message IDs
+   - Permanent per-message tombstone
+   - Use case: User deletes single message, message stays deleted even if Firestore re-sends it
+
+---
+
+### Individual Message Deletion Flow
+
+**User Action:** Swipe → Delete single message
+
+**Step 1: Mark Tombstone**
+```swift
+// MessageCacheService.deleteMessage()
+let state = getConversationState(for: conversationId, userId: currentUserId)
+state.markMessageDeleted(messageId)  // Add to deletedMessageIds array
+```
+
+**Step 2: Delete from SwiftData**
+```swift
+let localMessage = fetchLocalMessage(messageId)
+context.delete(localMessage)
+context.save()
+```
+
+**Step 3: Firestore (No Action)**
+- Message remains in Firestore (not touched)
+- Will be cleaned up by 24-hour retention policy (future)
+
+**Step 4: Prevent Re-caching**
+```swift
+// MessageCacheService.saveMessage()
+func saveMessage(_ message: Message, currentUserId: String) {
+    let state = getConversationState(for: message.conversationId, userId: currentUserId)
+    
+    // Check tombstones
+    if state.isMessageDeleted(message.id) {
+        print("⏭️ Skipping deleted message: \(message.id)")
+        return  // Don't save - message was deleted by user
+    }
+    
+    if let deletedAt = state.deletedAt, message.timestamp < deletedAt {
+        print("⏭️ Skipping message older than conversation deletion")
+        return  // Don't save - conversation was deleted before this message
+    }
+    
+    // Safe to save
+    // ... save logic ...
+}
+```
+
+**Result:**
+- Message disappears from UI immediately
+- Message never reappears (tombstone protection)
+- Firestore listener continues working normally
+
+---
+
+### Conversation Deletion Flow
+
+**User Action:** Swipe → Delete conversation
+
+**Step 1: Delete ALL Messages**
+```swift
+// MessageCacheService.deleteAllMessagesInConversation()
+let messages = fetchMessages(for: conversationId)
+for message in messages {
+    context.delete(message)
+}
+```
+
+**Step 2: Set Conversation Tombstone**
+```swift
+let state = getConversationState(for: conversationId, userId: currentUserId)
+state.deletedAt = Date()  // Mark deletion timestamp
+context.save()
+```
+
+**Step 3: Remove from UI**
+```swift
+// ChatListViewModel.deleteConversation()
+conversations.removeAll { $0.id == conversationId }
+```
+
+**Step 4: Firestore (No Action)**
+- Conversation document remains in Firestore
+- Message documents remain in Firestore
+- Listeners stay active (important for new messages!)
+
+**Step 5: New Messages After Deletion**
+- Firestore listener still active for this conversation
+- New message arrives → `saveMessage()` called
+- Check: `message.timestamp > deletedAt`? YES → Save it
+- Conversation reappears in chat list (has messages now)
+- Old messages stay deleted (timestamp < deletedAt)
+
+**Result:**
+- Conversation disappears from chat list
+- All messages deleted locally
+- Can receive new messages from same contact/group
+- Acts as "fresh start" for that conversation
+
+---
+
+### Conversation Visibility Logic
+
+**ChatListViewModel Filter (Smart Filtering):**
+
+```swift
+func startListening() {
+    firestoreService.listenToConversations(userId: userId) { conversations in
+        // Store ALL conversations (unfiltered)
+        self.allConversations = conversations
+        
+        // Set up message listeners for ALL conversations
+        // (Even empty ones - critical for group message delivery!)
+        self.syncMessagesToCache(for: conversations)
+        
+        // THEN filter to show only conversations with messages
+        self.applyConversationFilter()
+    }
+}
+
+func applyConversationFilter() {
+    // Only show conversations that have messages in SwiftData
+    let filtered = allConversations.filter { conversation in
+        let messages = MessageCacheService.shared.fetchMessages(
+            for: conversation.id, 
+            in: modelContext
+        )
+        return !messages.isEmpty
+    }
+    
+    self.conversations = filtered
+}
+```
+
+**Why Listen to ALL Conversations (Even Empty)?**
+- User gets added to group → Conversation in Firestore, no local messages yet
+- If we don't attach listener → Messages arrive but never cached
+- Solution: Attach listeners to ALL conversations
+- When messages arrive → Cached → Re-filter → Conversation appears ✨
+
+**Visibility States:**
+1. **Visible:** Conversation has ≥1 message in SwiftData
+2. **Hidden:** Conversation has 0 messages in SwiftData
+3. **Transition:** Message arrives → Cached → `refreshConversationList()` → Appears
+
+---
+
+### New Message Composition Flow
+
+**Problem Solved:** After deleting a conversation, user couldn't start new chat with same contact because conversation showed as empty/deleted.
+
+**Solution:** Separate composition flow for first messages vs existing threads.
+
+---
+
+#### Direct Message (1:1) Composition
+
+**User Action:** Tap contact in UserSearchView
+
+**Decision Tree:**
+```swift
+private func startChat(with user: User) async {
+    let conversation = try await createDirectConversation(with: user)
+    let messages = MessageCacheService.shared.fetchMessages(for: conversation.id)
+    
+    if !messages.isEmpty {
+        // Has messages → Go to existing thread
+        showChatView = true  // Present ChatDetailView
+    } else {
+        // No messages → Compose first message
+        showComposeView = true  // Present ComposeMessageView
+    }
+}
+```
+
+**ComposeMessageView (New First Messages):**
+- Minimal UI: Recipient name + message input
+- User types first message
+- Tap send → Message saved to SwiftData → Sent to Firestore
+- Auto-dismiss after sending
+- Conversation appears in chat list (now has messages)
+
+**ChatDetailView (Existing Threads):**
+- Full chat UI with message history
+- Used when conversation already has messages
+- Standard chat interface
+
+**Handles Previously Deleted Conversations:**
+- Conversation deleted → `deletedAt` set
+- Create new chat → `conversation.id` same (Firestore reuses)
+- Check messages: `fetchMessages()` returns empty (all deleted)
+- Route to ComposeMessageView (fresh start)
+- Send message → `timestamp > deletedAt` → Saved ✅
+- Old messages still filtered (timestamp < deletedAt)
+
+---
+
+#### Group Message Composition
+
+**User Action:** Create new group
+
+**Flow:**
+```swift
+// NewGroupView
+private func createGroup() async {
+    let conversation = try await createGroupConversation(
+        name: groupName, 
+        participants: selectedUsers
+    )
+    
+    // Group created → Go straight to ChatDetailView
+    // (Group already has members, just needs first message)
+    createdConversation = conversation
+    showChatView = true
+}
+```
+
+**Key Difference from Direct Messages:**
+- Groups → Always go to `ChatDetailView` (group metadata exists)
+- Direct → Check messages first, then route accordingly
+- Group creation is a distinct action (UI step + Firebase write)
+- Direct conversation "creation" is often just finding existing doc
+
+**Receiving Group Messages (You Didn't Create Group):**
+1. Someone adds you to group → `conversations/{id}/participants` includes you
+2. `listenToConversations()` fires → New conversation received
+3. `allConversations` updated (unfiltered list)
+4. Message listener attached for this conversation
+5. Someone sends message → Listener fires → `saveMessage()` called
+6. Message cached → `refreshConversationList()` called
+7. Filter re-runs → Conversation now has messages → Appears in list ✨
+
+---
+
+### Sheet Dismissal Chain
+
+**Problem:** Multiple sheets (search → compose/chat) competing for presentation.
+
+**Solution:** Nested sheet dismissal with onDismiss callbacks.
+
+**UserSearchView (Search for Contact):**
+```swift
+.sheet(isPresented: $showComposeView) {
+    ComposeMessageView(
+        recipient: selectedUser,
+        conversation: selectedConversation,
+        onDismiss: {
+            dismiss()  // Also dismiss UserSearchView
+        }
+    )
+}
+```
+
+**ComposeMessageView (Compose First Message):**
+```swift
+private func sendMessage() {
+    // ... send logic ...
+    dismiss()       // Dismiss compose view
+    onDismiss?()    // Also dismiss search view
+}
+```
+
+**Result:**
+- Select contact → ComposeMessageView appears
+- Send message → Both sheets dismiss → Back to chat list
+- Clean UX, no stuck sheets
+
+---
+
+### Multi-User & Multi-Device Behavior
+
+**Per-User Deletion (Local State):**
+- Each user has own `LocalConversationState` for each conversation
+- `uniqueId = conversationId + userId` (composite key)
+- User A deletes conversation → Only User A's local state updated
+- User B unaffected (User B's local state independent)
+
+**Multi-Device (Current Limitation):**
+- Deletion is device-local only
+- User's iPhone deletes conversation → User's iPad still has it
+- **Why:** SwiftData doesn't sync across devices (by design, privacy-first)
+- **Future:** Optional iCloud sync for SwiftData (if user opts in)
+
+**Firestore Never Modified:**
+- Deletion = local operation only
+- Firestore conversations/messages never deleted by client
+- 24-hour cleanup (future) handles Firestore cleanup globally
+- Simpler, safer, no race conditions
+
+---
+
+### Edge Cases Handled
+
+**1. Delete conversation → Receive new message from same contact**
+- Old messages filtered (`timestamp < deletedAt`)
+- New message cached (`timestamp > deletedAt`)
+- Conversation reappears with only new message
+- ✅ Works perfectly
+
+**2. Delete individual message → Firestore re-sends it (listener re-fires)**
+- `deletedMessageIds` contains message ID
+- `saveMessage()` checks tombstone → Skips
+- Message stays deleted
+- ✅ Tombstone protection works
+
+**3. Delete conversation → Someone adds you back to same group**
+- Group doc in Firestore unchanged
+- Local messages deleted, `deletedAt` set
+- Message listener still active
+- New message arrives → Cached → Conversation reappears
+- ✅ Group rejoin works
+
+**4. Create chat → No messages → Navigate away → Return**
+- Empty conversation hidden (no messages in SwiftData)
+- Not in chat list (filtered out)
+- User must compose first message to make it visible
+- ✅ No empty conversation clutter
+
+**5. Delete conversation → Create new chat with same contact**
+- `createDirectConversation()` finds existing Firestore doc
+- `fetchMessages()` returns empty (deleted locally)
+- Routes to ComposeMessageView (fresh start)
+- ✅ Fresh conversation experience
+
+---
+
+### Performance Considerations
+
+**Why Not Delete from Firestore?**
+1. **Multi-user complexity:** Other users need the data
+2. **Race conditions:** Listener might re-add while deleting
+3. **Firestore costs:** Deletes cost same as writes
+4. **24-hour cleanup:** Automatic Firestore cleanup planned (future)
+5. **Simpler logic:** Local-only deletion = zero edge cases
+
+**Background Sync Optimization:**
+- ALL conversations get listeners (even empty)
+- Listeners use `documentChanges` (efficient, only new/modified)
+- Tombstone check is fast (O(1) for deletedAt, O(n) for deletedMessageIds)
+- Filter runs only on conversation list changes (rare)
+
+**Memory Efficiency:**
+- `deletedMessageIds` array grows over time (per conversation)
+- Cleared when `deletedAt` set (conversation deletion resets it)
+- Typical: 0-50 individually deleted messages per conversation
+- Memory: ~1KB per conversation (negligible)
+
+---
+
+### Code References
+
+**Key Files:**
+- `LocalConversationState.swift` - Tombstone model
+- `MessageCacheService.swift` - Deletion + tombstone logic
+- `ChatListViewModel.swift` - Conversation filtering
+- `ChatViewModel.swift` - Message deletion UI
+- `ComposeMessageView.swift` - First message composition
+- `UserSearchView.swift` - Routing logic (compose vs chat)
+- `NewGroupView.swift` - Group creation flow
+
+**Key Methods:**
+- `MessageCacheService.deleteMessage()` - Individual message deletion
+- `MessageCacheService.deleteAllMessagesInConversation()` - Conversation deletion
+- `MessageCacheService.saveMessage()` - Tombstone check on save
+- `ChatListViewModel.applyConversationFilter()` - Visibility filtering
+- `ChatListViewModel.syncMessagesToCache()` - Background listener setup
+
+---
+
+### Testing Scenarios
+
+**Test 1: Individual Message Deletion**
+1. Open chat, delete single message
+2. Navigate away, return to chat
+3. ✅ Message stays deleted
+
+**Test 2: Conversation Deletion**
+1. Delete conversation from chat list
+2. Other user sends new message
+3. ✅ Conversation reappears with only new message
+4. ✅ Old messages not visible
+
+**Test 3: Group Addition**
+1. User A creates group with User B, User C
+2. User C deletes conversation locally
+3. User A sends message
+4. ✅ User C sees conversation appear with new message
+
+**Test 4: Empty Conversation Handling**
+1. Search for contact, select
+2. See ComposeMessageView (empty conversation)
+3. Cancel without sending
+4. ✅ Conversation not in chat list (no messages)
+
+**Test 5: Re-initiate After Deletion**
+1. Delete conversation with User B
+2. Search for User B again, select
+3. ✅ See ComposeMessageView (fresh start)
+4. Send message
+5. ✅ Conversation appears with new message only
+
+---
+
 ## App Structure - 4 Tabs
 
 ### Tab Bar Layout (Bottom Navigation)

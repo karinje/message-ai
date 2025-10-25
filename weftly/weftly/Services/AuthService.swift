@@ -11,6 +11,7 @@ import FirebaseFirestore
 import GoogleSignIn
 import Combine
 import FirebaseMessaging
+import SwiftData
 
 @MainActor
 class AuthService: ObservableObject {
@@ -218,6 +219,73 @@ class AuthService: ObservableObject {
         
         try await db.collection("users").document(userId).updateData(updates)
         await fetchCurrentUser(userId: userId)
+    }
+    
+    func updateProfilePicture(url: String) async throws {
+        guard let userId = currentUser?.id else { return }
+        
+        try await db.collection("users").document(userId).updateData([
+            "profilePictureUrl": url
+        ])
+        await fetchCurrentUser(userId: userId)
+    }
+    
+    func updateAbout(_ about: String) async throws {
+        guard let userId = currentUser?.id else { return }
+        
+        try await db.collection("users").document(userId).updateData([
+            "about": about
+        ])
+        await fetchCurrentUser(userId: userId)
+    }
+    
+    func deleteAllChats(modelContext: ModelContext) async throws {
+        // Delete local SwiftData messages
+        let messageDescriptor = FetchDescriptor<LocalMessage>()
+        let allMessages = try modelContext.fetch(messageDescriptor)
+        
+        print("🗑️ Deleting \(allMessages.count) local messages")
+        
+        for message in allMessages {
+            modelContext.delete(message)
+        }
+        
+        // Delete local conversation states (unread counters)
+        let stateDescriptor = FetchDescriptor<LocalConversationState>()
+        let allStates = try modelContext.fetch(stateDescriptor)
+        
+        print("🗑️ Deleting \(allStates.count) conversation states")
+        
+        for state in allStates {
+            modelContext.delete(state)
+        }
+        
+        // Delete pending messages
+        let pendingDescriptor = FetchDescriptor<PendingMessage>()
+        let pendingMessages = try modelContext.fetch(pendingDescriptor)
+        
+        print("🗑️ Deleting \(pendingMessages.count) pending messages")
+        
+        for pending in pendingMessages {
+            modelContext.delete(pending)
+        }
+        
+        try modelContext.save()
+        print("✅ All local chats deleted")
+    }
+    
+    func deleteAccount() async throws {
+        guard let userId = auth.currentUser?.uid else { return }
+        
+        // Delete user document from Firestore
+        try await db.collection("users").document(userId).delete()
+        
+        // Delete Firebase Auth account
+        try await auth.currentUser?.delete()
+        
+        NotificationService.shared.clearFCMToken()
+        self.currentUser = nil
+        self.isAuthenticated = false
     }
     
     func updateFCMToken(_ token: String) async {

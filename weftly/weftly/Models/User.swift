@@ -17,6 +17,9 @@ struct User: Identifiable, Codable, Equatable {
     var lastSeen: Date
     var fcmToken: String?
     var privacySettings: PrivacySettings
+    var about: String?
+    var phoneNumber: String?
+    var cloudBackupSettings: CloudBackupSettings
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -27,9 +30,12 @@ struct User: Identifiable, Codable, Equatable {
         case lastSeen
         case fcmToken
         case privacySettings
+        case about
+        case phoneNumber
+        case cloudBackupSettings
     }
     
-    init(id: String? = nil, email: String, displayName: String, profilePictureUrl: String? = nil, isOnline: Bool = false, lastSeen: Date = Date(), fcmToken: String? = nil, privacySettings: PrivacySettings = PrivacySettings()) {
+    init(id: String? = nil, email: String, displayName: String, profilePictureUrl: String? = nil, isOnline: Bool = false, lastSeen: Date = Date(), fcmToken: String? = nil, privacySettings: PrivacySettings = PrivacySettings(), about: String? = nil, phoneNumber: String? = nil, cloudBackupSettings: CloudBackupSettings = CloudBackupSettings()) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -38,6 +44,9 @@ struct User: Identifiable, Codable, Equatable {
         self.lastSeen = lastSeen
         self.fcmToken = fcmToken
         self.privacySettings = privacySettings
+        self.about = about
+        self.phoneNumber = phoneNumber
+        self.cloudBackupSettings = cloudBackupSettings
     }
     
     // Custom decoder to handle missing privacySettings in old documents
@@ -52,6 +61,9 @@ struct User: Identifiable, Codable, Equatable {
         fcmToken = try container.decodeIfPresent(String.self, forKey: .fcmToken)
         // Provide default if missing
         privacySettings = (try? container.decode(PrivacySettings.self, forKey: .privacySettings)) ?? PrivacySettings()
+        about = try container.decodeIfPresent(String.self, forKey: .about)
+        phoneNumber = try container.decodeIfPresent(String.self, forKey: .phoneNumber)
+        cloudBackupSettings = (try? container.decode(CloudBackupSettings.self, forKey: .cloudBackupSettings)) ?? CloudBackupSettings()
     }
 }
 

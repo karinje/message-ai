@@ -319,21 +319,48 @@ class FirestoreService: ObservableObject {
                     return
                 }
                 
-                guard let documents = snapshot?.documents else {
-                    print("⚠️ No documents in snapshot")
+                guard let snapshot = snapshot else {
+                    print("⚠️ No snapshot")
                     return
                 }
                 
-                print("📬 Message listener callback fired - \(documents.count) documents")
+                // ✅ OPTIMIZED: Only process CHANGES (not all documents)
+                let changes = snapshot.documentChanges
+                print("📬 Message listener fired - \(changes.count) changes (not \(snapshot.documents.count) total)")
                 
-                let messages = documents.compactMap { doc -> Message? in
-                    var msg = try? doc.data(as: Message.self)
-                    if msg?.id == nil { msg?.id = doc.documentID }
-                    return msg
+                var changedMessages: [Message] = []
+                
+                for change in changes {
+                    switch change.type {
+                    case .added:
+                        // New message arrived (or initial load)
+                        if var msg = try? change.document.data(as: Message.self) {
+                            if msg.id == nil { msg.id = change.document.documentID }
+                            changedMessages.append(msg)
+                            print("➕ Added: \(msg.id ?? "no-id")")
+                        }
+                        
+                    case .modified:
+                        // Message updated (status change, read receipt, etc)
+                        if var msg = try? change.document.data(as: Message.self) {
+                            if msg.id == nil { msg.id = change.document.documentID }
+                            changedMessages.append(msg)
+                            print("✏️ Modified: \(msg.id ?? "no-id")")
+                        }
+                        
+                    case .removed:
+                        // Message deleted from Firestore (future: admin delete)
+                        print("🗑️ Removed from Firestore: \(change.document.documentID)")
+                        // Don't add to changedMessages - it's deleted
+                    }
                 }
                 
-                print("✉️ Parsed \(messages.count) messages from Firestore")
-                completion(messages)
+                if !changedMessages.isEmpty {
+                    print("✉️ Sending \(changedMessages.count) changed messages to cache")
+                    completion(changedMessages)
+                } else {
+                    print("⏭️ No changes to process")
+                }
             }
         
         messageListeners[conversationId] = listener

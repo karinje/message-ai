@@ -13,15 +13,20 @@ struct ChatListView: View {
     @StateObject private var listsViewModel: ListsViewModel
     @StateObject private var broadcastViewModel: BroadcastViewModel
     @ObservedObject var authService: AuthService
+    @ObservedObject var networkMonitor: NetworkMonitor
     @Environment(\.modelContext) private var modelContext
     @State private var showNewChat = false
     @State private var showSearch = false
     @State private var showBroadcast = false
+    @State private var showCameraSheet = false
+    @State private var showImagePicker = false
+    @State private var showCamera = false
     @State private var searchText = ""
     @State private var selectedList: ConversationList?
     
-    init(authService: AuthService) {
+    init(authService: AuthService, networkMonitor: NetworkMonitor) {
         self.authService = authService
+        self.networkMonitor = networkMonitor
         _viewModel = StateObject(wrappedValue: ChatListViewModel(authService: authService))
         _listsViewModel = StateObject(wrappedValue: ListsViewModel(authService: authService))
         _broadcastViewModel = StateObject(wrappedValue: BroadcastViewModel(authService: authService))
@@ -179,6 +184,13 @@ struct ChatListView: View {
         .contextMenu {
             contextMenuContent(for: conversation)
         }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                viewModel.deleteConversation(conversation)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
     }
     
     func contextMenuContent(for conversation: Conversation) -> some View {
@@ -240,39 +252,72 @@ struct ChatListView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
+                    HStack(spacing: 20) {
+                        // Camera button
                         Button {
-                            showSearch = true
+                            showCameraSheet = true
                         } label: {
-                            Label("New Direct Chat", systemImage: "person.badge.plus")
+                            Image(systemName: "camera.fill")
+                                .font(.title3)
                         }
                         
-                        Button {
-                            showNewChat = true
+                        // New chat menu button
+                        Menu {
+                            Button {
+                                showSearch = true
+                            } label: {
+                                Label("New Direct Chat", systemImage: "person.badge.plus")
+                            }
+                            
+                            Button {
+                                showNewChat = true
+                            } label: {
+                                Label("New Group Chat", systemImage: "person.3.fill")
+                            }
+                            
+                            Divider()
+                            
+                            Button {
+                                showBroadcast = true
+                            } label: {
+                                Label("New Broadcast", systemImage: "megaphone")
+                            }
                         } label: {
-                            Label("New Group Chat", systemImage: "person.3.fill")
+                            Image(systemName: "square.and.pencil")
+                                .font(.title3)
                         }
-                        
-                        Divider()
-                        
-                        Button {
-                            showBroadcast = true
-                        } label: {
-                            Label("New Broadcast", systemImage: "megaphone")
-                        }
-                    } label: {
-                        Image(systemName: "square.and.pencil")
                     }
                 }
             }
             .sheet(isPresented: $showSearch) {
-                UserSearchView(authService: authService, viewModel: viewModel)
+                UserSearchView(authService: authService, viewModel: viewModel, networkMonitor: networkMonitor)
             }
             .sheet(isPresented: $showNewChat) {
-                NewGroupView(authService: authService, viewModel: viewModel)
+                NewGroupView(authService: authService, viewModel: viewModel, networkMonitor: networkMonitor)
             }
             .sheet(isPresented: $showBroadcast) {
                 CreateBroadcastListView(viewModel: broadcastViewModel)
+            }
+            .confirmationDialog("Camera Options", isPresented: $showCameraSheet) {
+                Button("Take Photo") {
+                    showCamera = true
+                }
+                Button("Choose from Library") {
+                    showImagePicker = true
+                }
+                Button("Cancel", role: .cancel) { }
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraPickerView { image in
+                    // Handle camera image - for now just show search to select recipient
+                    showSearch = true
+                }
+            }
+            .sheet(isPresented: $showImagePicker) {
+                ImageLibraryPickerView { image in
+                    // Handle library image - for now just show search to select recipient
+                    showSearch = true
+                }
             }
             .onAppear {
                 print("📱 ChatListView appeared, user: \(authService.currentUser?.displayName ?? "nil")")

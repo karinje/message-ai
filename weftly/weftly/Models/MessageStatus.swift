@@ -8,7 +8,8 @@
 import Foundation
 
 enum MessageStatus: String, Codable {
-    case sending = "sending"     // Optimistic UI, not yet confirmed by server
+    case pending = "pending"     // Waiting for network (offline)
+    case sending = "sending"     // Actively sending to server
     case sent = "sent"           // Server confirmed receipt
     case delivered = "delivered" // Delivered to recipient's device
     case read = "read"           // Read by recipient

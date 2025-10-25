@@ -4,6 +4,9 @@
 **Firebase Project:** Weftly  
 **Bundle ID:** com.sanjaykarinje.weftly  
 
+> **📝 Note:** AI Features (PR #17-24) are tracked separately in `weftly_ai_implementation_plan_comprehensive.md`  
+> This document covers MVP (PR #1-12) and Enhanced Features (PR #13-16)
+
 ## MVP Status (Oct 24, 2025)
 - ✅ Authentication & profiles (Firebase Email/Password, avatar support)
 - ✅ 1:1 messaging with optimistic UI, read receipts, timestamps
@@ -20,19 +23,22 @@
 ## Enhanced Features Status (Phase 2)
 - 🔜 Lists & Filters system (PR #13)
 - 🔜 Privacy controls with reciprocal behavior (PR #13)
-- 🔜 Broadcast messages (PR #14)
-- 🔜 Contacts integration (PR #15)
-- 🔜 Camera/photo quick access (PR #15)
-- ⚠️ **Local storage + Cloud backup (PR #15A) - CRITICAL BUG FIX** (unread counter)
+- ✅ Broadcast messages (PR #14) - COMPLETE
+- ✅ Contacts integration (PR #15) - Pre-existing in codebase
+- ✅ Camera/photo quick access (PR #15) - Pre-existing in codebase
+- ✅ **Local storage + Cloud backup (PR #15A) - COMPLETE** (unread counter FIXED)
 - 🔜 Message search (PR #16)
 - 🔜 Enhanced account management (PR #16)
 
-## Current Issue (Oct 24, 2025)
-**Problem:** Unread counter not incrementing correctly (stuck at 1 or 0)  
-**Root Cause:** Mixing Firebase reads with local SwiftData state causes sync issues  
-**Solution:** PR #15A implements 100% local unread calculation (zero Firebase involvement)
+## AI Features Status (Phase 3)
+- **See `weftly_ai_implementation_plan_comprehensive.md` for detailed AI implementation plan (PR #17-24)**
 
-**Architecture Clarification (Important!):**
+## Recent Fixes (Oct 24, 2025)
+✅ **FIXED: Unread counter bug** - Was stuck at 1 or 0  
+✅ **Solution:** Implemented 100% local unread calculation via `LocalConversationState.lastReadTimestamp`  
+✅ **Result:** Counters now increment correctly, no Firebase sync issues
+
+**Architecture Note:**
 - **Last Seen (user-level):** `users/{userId}/lastSeen` - for online/offline green dot
 - **Unread Counter (conversation-level):** `LocalConversationState.lastReadTimestamp` - 100% local SwiftData
 - **These are COMPLETELY SEPARATE systems** - no relation to each other
@@ -1004,207 +1010,6 @@ struct CloudBackupSettings: Codable {
 
 ---
 
-## Post-MVP: AI Features Phase (Days 11-14)
-
-### PR #17: AI Infrastructure Setup
-**Branch:** `feature/ai-infrastructure`  
-**Estimated Time:** 2-3 hours  
-**Description:** Firebase Cloud Functions, OpenAI/Claude API integration
-
-**Tasks:**
-- [ ] Initialize Firebase Cloud Functions project
-- [ ] Install AI SDK dependencies (OpenAI or Anthropic)
-- [ ] Create Cloud Function for AI chat endpoint
-- [ ] Implement secure API key storage (Firebase environment config)
-- [ ] Create `AIService.swift` in iOS app to call Cloud Functions
-- [ ] Add conversation history retrieval (RAG pipeline basics)
-- [ ] Verify: Call AI function from app, get response
-
-**Files Created:**
-- `functions/index.js` (Cloud Functions)
-- `functions/package.json`
-- `Services/AIService.swift`
-- `ViewModels/AIViewModel.swift`
-
----
-
-### PR #18: AI Chat Interface
-**Branch:** `feature/ai-chat-interface`  
-**Estimated Time:** 3-4 hours  
-**Description:** Build out AI tab with dedicated AI assistant chat interface (tab placeholder created in PR #4)
-
-**Tasks:**
-- [ ] Create AI conversation type in Firestore
-- [ ] Build `AIChatView.swift` for AI assistant interface
-- [ ] Connect AI tab in MainTabView to AIChatView (replace placeholder)
-- [ ] Implement streaming responses (if supported)
-- [ ] Add context: let AI access user's message history
-- [ ] Create AI avatar/branding
-- [ ] Verify: Ask AI a question about conversations
-
-**Files Created:**
-- `Views/AI/AIChatView.swift`
-- `ViewModels/AIChatViewModel.swift`
-
-**Files Modified:**
-- `Views/Main/MainTabView.swift` (add AI tab)
-
----
-
-### PR #19: Required AI Feature #1 - Smart Calendar Extraction
-**Branch:** `feature/ai-calendar-extraction`  
-**Estimated Time:** 4-5 hours  
-**Description:** Detect dates/times/events in messages
-
-**Tasks:**
-- [ ] Create Cloud Function for calendar extraction using LLM
-- [ ] Implement prompt engineering for date/time parsing
-- [ ] Add function calling for structured output (date, time, event)
-- [ ] Create UI indicator for detected events (chip/badge on message)
-- [ ] Build calendar export functionality (iCal format)
-- [ ] Add "Add to Calendar" button on detected events
-- [ ] Verify with various date formats ("next Tuesday", "12/25", "tomorrow at 3pm")
-
-**Files Created:**
-- `functions/calendarExtractor.js`
-- `Views/Components/EventChipView.swift`
-
-**Files Modified:**
-- `Services/AIService.swift` (calendar extraction endpoint)
-- `Views/Chat/MessageRow.swift` (show event chips)
-
----
-
-### PR #20: Required AI Feature #2 - Decision Summarization
-**Branch:** `feature/ai-decision-summary`  
-**Estimated Time:** 4-5 hours  
-**Description:** Summarize decisions from group chats
-
-**Tasks:**
-- [ ] Create Cloud Function for decision summarization
-- [ ] Implement RAG: retrieve last N messages from conversation
-- [ ] Engineer prompt to identify decisions/conclusions
-- [ ] Build `DecisionSummaryView.swift` sheet
-- [ ] Add "Summarize Decisions" button in group chat toolbar
-- [ ] Display summary with timestamps and participants
-- [ ] Cache summaries to reduce API costs
-- [ ] Verify on long group chat threads (50+ messages)
-
-**Files Created:**
-- `functions/decisionSummarizer.js`
-- `Views/AI/DecisionSummaryView.swift`
-
-**Files Modified:**
-- `Services/AIService.swift` (summary endpoint)
-- `Views/Chat/ChatDetailView.swift` (summary button)
-
----
-
-### PR #21: Required AI Feature #3 - Priority Message Highlighting
-**Branch:** `feature/ai-priority-detection`  
-**Estimated Time:** 4-5 hours  
-**Description:** Auto-detect urgent/important messages
-
-**Tasks:**
-- [ ] Create Cloud Function for priority detection
-- [ ] Implement sentiment + urgency analysis with LLM
-- [ ] Define priority levels (urgent, important, normal)
-- [ ] Add `priority` field to Message model
-- [ ] Run priority detection on incoming messages (background)
-- [ ] Update `MessageRow.swift` to highlight urgent messages (red border/icon)
-- [ ] Add filter in ChatListView to show priority messages
-- [ ] Verify with urgent keywords ("emergency", "ASAP", "school closed")
-
-**Files Created:**
-- `functions/priorityDetector.js`
-
-**Files Modified:**
-- `Models/Message.swift` (add priority field)
-- `Services/AIService.swift` (priority detection endpoint)
-- `Views/Chat/MessageRow.swift` (priority styling)
-- `Views/Chat/ChatListView.swift` (priority filter)
-
----
-
-### PR #22: Required AI Feature #4 - RSVP Tracking
-**Branch:** `feature/ai-rsvp-tracking`  
-**Estimated Time:** 4-5 hours  
-**Description:** Track event confirmations in group chats
-
-**Tasks:**
-- [ ] Create Cloud Function to detect RSVP requests
-- [ ] Identify invitation messages (LLM pattern matching)
-- [ ] Parse responses ("I can come", "count me in", "can't make it")
-- [ ] Create RSVP data structure (event, yesCount, noCount, maybeCount)
-- [ ] Build `RSVPTrackerView.swift` to display headcount
-- [ ] Show RSVP summary below invitation message
-- [ ] Add manual RSVP buttons (Yes/No/Maybe)
-- [ ] Verify with various invitation formats
-
-**Files Created:**
-- `functions/rsvpTracker.js`
-- `Views/AI/RSVPTrackerView.swift`
-- `Models/RSVPEvent.swift`
-
-**Files Modified:**
-- `Services/AIService.swift` (RSVP endpoints)
-- `Views/Chat/MessageRow.swift` (RSVP UI)
-
----
-
-### PR #23: Required AI Feature #5 - Deadline/Reminder Extraction
-**Branch:** `feature/ai-deadline-extraction`  
-**Estimated Time:** 4-5 hours  
-**Description:** Auto-detect deadlines and set reminders
-
-**Tasks:**
-- [ ] Create Cloud Function for deadline detection
-- [ ] Identify deadline patterns ("due Friday", "by end of week", "permission slip deadline")
-- [ ] Extract: task, deadline date/time, context
-- [ ] Create reminder system (local notifications)
-- [ ] Build `DeadlineListView.swift` to show all upcoming deadlines
-- [ ] Add reminder notification 24 hours before deadline
-- [ ] Allow users to snooze/dismiss reminders
-- [ ] Verify with various deadline formats
-
-**Files Created:**
-- `functions/deadlineExtractor.js`
-- `Views/AI/DeadlineListView.swift`
-- `Models/Deadline.swift`
-
-**Files Modified:**
-- `Services/AIService.swift` (deadline endpoint)
-- `Services/NotificationService.swift` (reminder notifications)
-
----
-
-### PR #24: Advanced AI Feature - Proactive Assistant
-**Branch:** `feature/ai-proactive-assistant`  
-**Estimated Time:** 6-8 hours  
-**Description:** Detect conflicts, suggest solutions
-
-**Tasks:**
-- [ ] Integrate with user's calendar (EventKit)
-- [ ] Create conflict detection Cloud Function
-- [ ] Analyze new messages against calendar events
-- [ ] Detect scheduling conflicts ("Can you pick up at 3?" when meeting at 3)
-- [ ] Build proactive notification system
-- [ ] Generate suggested responses ("I have a meeting, can we do 4pm instead?")
-- [ ] Build `ConflictAlertView.swift` sheet
-- [ ] Add AI suggestion chips in message compose
-- [ ] Verify conflict scenarios with live data
-
-**Files Created:**
-- `functions/proactiveAssistant.js`
-- `Views/AI/ConflictAlertView.swift`
-- `Services/CalendarService.swift`
-
-**Files Modified:**
-- `ViewModels/ChatDetailViewModel.swift` (conflict detection)
-- `Views/Chat/MessageInputView.swift` (suggestion chips)
-
----
-
 ## Git Workflow
 
 ### Branch Naming Convention
@@ -1251,20 +1056,14 @@ Track your progress by checking off PRs as you complete them:
 
 **Enhanced Features Phase (Days 8-10)** *(In Progress)*
 - [ ] PR #13: Lists & Filters + Privacy Controls
-- [ ] PR #14: Broadcast Messages
-- [ ] PR #15: Contacts Integration + Camera Quick Access
-- [ ] PR #15A: Local Message Storage + Cloud Retention Toggle
+- [x] PR #14: Broadcast Messages ✅
+- [x] PR #15: Contacts Integration + Camera Quick Access ✅ (Pre-existing)
+- [x] PR #15A: Local Message Storage + Cloud Retention Toggle ✅ (Unread counter FIXED)
 - [ ] PR #16: Search + Enhanced Account Management
 
-**AI Features Phase (Days 11-14)** *(Not started)*
-- [ ] PR #17: AI Infrastructure
-- [ ] PR #18: AI Chat Interface
-- [ ] PR #19: Calendar Extraction
-- [ ] PR #20: Decision Summarization
-- [ ] PR #21: Priority Detection
-- [ ] PR #22: RSVP Tracking
-- [ ] PR #23: Deadline Extraction
-- [ ] PR #24: Proactive Assistant
+**AI Features Phase (Days 11-14)**
+- **See `weftly_ai_implementation_plan_comprehensive.md` for detailed implementation plan**
+- PR #17-24: All AI features, infrastructure, and advanced capabilities tracked in comprehensive AI plan
 
 **Final Deliverables**
 - [ ] Demo video recorded
@@ -1276,32 +1075,25 @@ Track your progress by checking off PRs as you complete them:
 
 ## Next Steps
 
-### Immediate Priorities (Oct 24, 2025)
+### Immediate Priorities (Oct 25, 2025)
 
-**1. ✅ MVP Complete!**
-- All 12 PRs implemented
-- Typing indicators + presence working
-- 4-tab navigation in place
-- Ready for enhanced features
+**1. ✅ Enhanced Features Progress:**
+- ✅ PR #14: Broadcast Messages - COMPLETE
+- ✅ PR #15: Contacts & Camera - Pre-existing in codebase
+- ✅ PR #15A: Local Storage & Unread Counter - FIXED
+- 🔜 PR #13: Lists & Filters + Privacy Controls - IN PROGRESS
+- 🔜 PR #16: Search + Account Management - NEXT UP
 
-**2. ⚠️ URGENT: Fix Unread Counter Bug (PR #15A)**
-- **Current blocker:** Unread counter not incrementing correctly
-- **Root cause identified:** Mixing Firebase reads with local SwiftData
-- **Solution:** Implement 100% local unread calculation
-- **Priority:** HIGHEST - blocks user experience
+**2. 🚀 AI Features Phase:**
+- See `weftly_ai_implementation_plan_comprehensive.md` for detailed roadmap
+- PR #17-24: All AI features with complete architecture
+- Timeline: 7-10 days for full AI implementation
+- Target: 28-30/30 rubric points
 
-**Architecture to Implement:**
-1. Create `LocalConversationState` SwiftData model with `lastReadTimestamp`
-2. Calculate unread count ONLY from local SwiftData (no Firebase reads)
-3. Update `lastReadTimestamp` when user opens chat (local write only)
-4. Implement optional cloud backup (Firebase Storage, NOT Firestore sync)
-5. Set up 24-hour Firestore message cleanup (Cloud Function)
-
-**3. Continue Enhanced Features After Bug Fix:**
-- PR #13: Lists & Filters + Privacy Controls
-- PR #14: Broadcast Messages
-- PR #15: Contacts Integration + Camera Access
-- PR #16: Search + Account Management
+**3. Finish Enhanced Features First:**
+- Complete PR #13: Lists & Filters system with Privacy controls
+- Complete PR #16: Message search + enhanced account management
+- Then transition to AI features phase
 
 **Development Best Practices:**
 1. **Commit Early, Commit Often:** Push code after each subtask
@@ -1310,7 +1102,8 @@ Track your progress by checking off PRs as you complete them:
 4. **Check Firestore Console:** Verify data structure and updates
 5. **Add Debug Logs:** Console.log to track typing events and presence updates
 
-**Timeline:**
-- Days 8-10: Enhanced Features (PR #13-16)
-- Days 11-14: AI Features (PR #17-24)
-- Day 15: Final polish, demo video, deliverables
+**Overall Timeline:**
+- ✅ Days 1-7: MVP Phase (PR #1-12) - COMPLETE
+- 🔄 Days 8-10: Enhanced Features (PR #13-16) - IN PROGRESS
+- 📋 Days 11-17: AI Features (PR #17-24) - See comprehensive AI plan
+- 🎬 Day 18: Final polish, demo video, deliverables

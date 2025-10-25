@@ -25,12 +25,33 @@ class ChatViewModel: ObservableObject {
     private let modelContext: ModelContext
     
     private var typingTimer: Timer?
+    private var cancellables = Set<AnyCancellable>()
     
     init(conversation: Conversation, authService: AuthService, networkMonitor: NetworkMonitor, modelContext: ModelContext) {
         self.currentConversation = conversation
         self.authService = authService
         self.networkMonitor = networkMonitor
         self.modelContext = modelContext
+        observeNetworkChanges()
+    }
+    
+    private func observeNetworkChanges() {
+        // Auto-retry pending messages when network reconnects
+        networkMonitor.$isConnected
+            .removeDuplicates()
+            .dropFirst() // Skip initial value
+            .sink { [weak self] isConnected in
+                guard let self = self else { return }
+                if isConnected {
+                    print("📶 Network reconnected - retrying pending messages")
+                    Task { @MainActor in
+                        self.retryPendingMessages()
+                    }
+                } else {
+                    print("📴 Network disconnected")
+                }
+            }
+            .store(in: &cancellables)
     }
     
     func startListening() {
@@ -66,9 +87,10 @@ class ChatViewModel: ObservableObject {
             
             // Perform all UI updates on the main thread
             Task { @MainActor in
-                // Save to cache (with status progression protection)
+                // Save to cache (with status progression protection + tombstone check)
                 do {
-                    try MessageCacheService.shared.saveMessages(firestoreMessages, in: self.modelContext)
+                    guard let currentUserId = self.authService.currentUser?.id else { return }
+                    try MessageCacheService.shared.saveMessages(firestoreMessages, currentUserId: currentUserId, in: self.modelContext)
                 } catch {
                     print("❌ Error saving messages to cache: \(error)")
                 }
@@ -160,6 +182,9 @@ class ChatViewModel: ObservableObject {
         messageText = ""
         pendingImageData = nil
     
+        // Set initial status based on network
+        let initialStatus: MessageStatus = networkMonitor.isConnected ? .sending : .pending
+        
         let message = Message(
             id: UUID().uuidString,
             conversationId: conversationId,
@@ -168,29 +193,29 @@ class ChatViewModel: ObservableObject {
             senderProfileUrl: currentUser.profilePictureUrl,
             text: text,
             timestamp: Date(),
-            status: .sending,
+            status: initialStatus,
             readBy: [userId],
             localImageData: imageData
         )
         
-        // Optimistic UI - add message immediately to both UI and cache
+        // Optimistic UI - add message immediately
         messages.append(message)
-        print("🚀 Created optimistic message: \(message.id ?? "no-id") with status=\(message.status.rawValue)")
+        print("🚀 Created message: \(message.id ?? "no-id") status=\(initialStatus.rawValue) (network: \(networkMonitor.isConnected))")
         
-        // Save to cache immediately for persistence
+        // Save to SwiftData immediately (works offline!)
         do {
-            try MessageCacheService.shared.saveMessage(message, in: modelContext)
-            print("💾 Saved optimistic message to cache: \(message.id ?? "no-id") status=\(message.status.rawValue)")
+            guard let currentUserId = authService.currentUser?.id else { return }
+            try MessageCacheService.shared.saveMessage(message, currentUserId: currentUserId, in: modelContext)
+            print("💾 Saved to cache: \(message.id ?? "no-id")")
         } catch {
-            print("❌ Error saving optimistic message to cache: \(error)")
+            print("❌ Error saving to cache: \(error)")
         }
         
-        // Try to send
+        // Try to send if online
         Task {
             if networkMonitor.isConnected {
                 do {
                     var messageToSend = message
-
                     if let imageData = imageData, let image = UIImage(data: imageData) {
                         let upload = try await storageService.uploadImage(image, path: "message_images/\(conversationId)/\(UUID().uuidString).jpg")
                         messageToSend.imageUrl = upload.url
@@ -199,33 +224,31 @@ class ChatViewModel: ObservableObject {
                     
                     let sentMessage = try await firestoreService.sendMessage(messageToSend)
                     
-                    // CRITICAL: Update cache with confirmed status
-                    try MessageCacheService.shared.saveMessage(sentMessage, in: modelContext)
-                    print("✅ Updated cache with sent message status: \(sentMessage.status.rawValue)")
+                    // Update cache with sent status
+                    guard let currentUserId = authService.currentUser?.id else { return }
+                    try MessageCacheService.shared.saveMessage(sentMessage, currentUserId: currentUserId, in: modelContext)
+                    print("✅ Message sent: \(sentMessage.id ?? "no-id") status=\(sentMessage.status.rawValue)")
                     
-                    // Reload from cache (single source of truth)
+                    // Reload from cache
                     await MainActor.run {
                         loadMessagesFromCache()
                     }
                 } catch {
-                    print("Error sending message: \(error.localizedDescription)")
-                    // Store in pending queue
-                    savePendingMessage(message)
-                    
-                    // Update cache with failed status
-                    var failedMessage = message
-                    failedMessage.status = .failed
-                    try? MessageCacheService.shared.saveMessage(failedMessage, in: modelContext)
+                    print("❌ Send failed: \(error.localizedDescription) - keeping as pending")
+                    // Update to pending status (will retry on reconnect)
+                    var pendingMessage = message
+                    pendingMessage.status = .pending
+                    if let currentUserId = authService.currentUser?.id {
+                        try? MessageCacheService.shared.saveMessage(pendingMessage, currentUserId: currentUserId, in: modelContext)
+                    }
                     
                     // Reload from cache
                     await MainActor.run {
                         loadMessagesFromCache()
                     }
                 }
-            } else {
-                // Store in pending queue for later
-                savePendingMessage(message)
             }
+            // If offline, message already saved with .pending status - nothing more to do
         }
     }
     
@@ -277,45 +300,52 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    private func savePendingMessage(_ message: Message) {
-        let pendingMessage = PendingMessage(
-            id: message.id ?? UUID().uuidString,
-            conversationId: message.conversationId,
-            text: message.text
-        )
-        modelContext.insert(pendingMessage)
-        try? modelContext.save()
-    }
-    
     func retryPendingMessages() {
-        let descriptor = FetchDescriptor<PendingMessage>(
-            predicate: #Predicate { $0.conversationId == currentConversation.id ?? "" }
+        guard let conversationId = currentConversation.id else { return }
+        guard let currentUserId = authService.currentUser?.id else { return }
+        
+        // Query LocalMessage with status = "pending"
+        let convId = conversationId
+        let descriptor = FetchDescriptor<LocalMessage>(
+            predicate: #Predicate<LocalMessage> { localMsg in
+                localMsg.conversationId == convId && localMsg.status == "pending"
+            }
         )
         
-        guard let pendingMessages = try? modelContext.fetch(descriptor) else { return }
+        guard let pendingLocalMessages = try? modelContext.fetch(descriptor) else {
+            print("⚠️ No pending messages found")
+            return
+        }
         
-        for pending in pendingMessages {
-            guard let currentUser = authService.currentUser, let userId = currentUser.id else { continue }
-            
-            let message = Message(
-                id: pending.id,
-                conversationId: pending.conversationId,
-                senderId: userId,
-                senderName: currentUser.displayName,
-                senderProfileUrl: currentUser.profilePictureUrl,
-                text: pending.text,
-                timestamp: pending.timestamp,
-                status: .sending,
-                readBy: [userId]
-            )
+        print("🔄 Retrying \(pendingLocalMessages.count) pending messages")
+        
+        for localMsg in pendingLocalMessages {
+            let message = Message(from: localMsg)
             
             Task {
                 do {
-                    _ = try await firestoreService.sendMessage(message)
-                    modelContext.delete(pending)
-                    try? modelContext.save()
+                    // Update to sending
+                    var sendingMsg = message
+                    sendingMsg.status = .sending
+                    try? MessageCacheService.shared.saveMessage(sendingMsg, currentUserId: currentUserId, in: modelContext)
+                    
+                    // Try to send
+                    let sentMessage = try await firestoreService.sendMessage(message)
+                    
+                    // Update with sent status
+                    try? MessageCacheService.shared.saveMessage(sentMessage, currentUserId: currentUserId, in: modelContext)
+                    print("✅ Retry successful: \(sentMessage.id ?? "no-id")")
+                    
+                    // Reload UI
+                    await MainActor.run {
+                        loadMessagesFromCache()
+                    }
                 } catch {
-                    print("Error retrying message: \(error.localizedDescription)")
+                    print("❌ Retry failed: \(error.localizedDescription)")
+                    // Keep as pending for next reconnect
+                    var pendingMsg = message
+                    pendingMsg.status = .pending
+                    try? MessageCacheService.shared.saveMessage(pendingMsg, currentUserId: currentUserId, in: modelContext)
                 }
             }
         }
@@ -334,6 +364,34 @@ class ChatViewModel: ObservableObject {
             return "\(names[0]) and \(names[1]) are typing..."
         } else {
             return "Multiple people are typing..."
+        }
+    }
+    
+    // MARK: - Delete Message
+    
+    func deleteMessage(_ message: Message) {
+        guard let messageId = message.id,
+              let conversationId = currentConversation.id,
+              let userId = authService.currentUser?.id else {
+            print("❌ Cannot delete message: missing required IDs")
+            return
+        }
+        
+        do {
+            // Delete from local cache (SwiftData + tombstone)
+            try MessageCacheService.shared.deleteMessage(
+                messageId,
+                conversationId: conversationId,
+                userId: userId,
+                in: modelContext
+            )
+            
+            // Reload messages from cache to update UI
+            loadMessagesFromCache()
+            
+            print("✅ Message deleted successfully")
+        } catch {
+            print("❌ Error deleting message: \(error.localizedDescription)")
         }
     }
     

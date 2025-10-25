@@ -47,5 +47,20 @@ struct Message: Identifiable, Codable, Equatable {
         self.readBy = readBy
         self.localImageData = localImageData
     }
+    
+    // Convert from LocalMessage to Message
+    init(from localMessage: LocalMessage) {
+        self.id = localMessage.id
+        self.conversationId = localMessage.conversationId
+        self.senderId = localMessage.senderId
+        self.senderName = localMessage.senderName
+        self.senderProfileUrl = nil  // LocalMessage doesn't store this
+        self.text = localMessage.text
+        self.imageUrl = localMessage.imageUrl
+        self.timestamp = localMessage.timestamp
+        self.status = MessageStatus(rawValue: localMessage.status) ?? .pending
+        self.readBy = localMessage.readBy
+        self.localImageData = nil
+    }
 }
 

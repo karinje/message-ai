@@ -6,15 +6,23 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct UserSearchView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
+    
     let authService: AuthService
     let viewModel: ChatListViewModel
+    let networkMonitor: NetworkMonitor
     
     @State private var searchText = ""
     @State private var searchResults: [User] = []
     @State private var isSearching = false
+    @State private var selectedUser: User?
+    @State private var selectedConversation: Conversation?
+    @State private var showComposeView = false
+    @State private var showChatView = false
     
     private let firestoreService = FirestoreService()
     
@@ -67,6 +75,30 @@ struct UserSearchView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showComposeView) {
+                if let user = selectedUser, let conversation = selectedConversation {
+                    ComposeMessageView(
+                        recipient: user,
+                        conversation: conversation,
+                        authService: authService,
+                        networkMonitor: networkMonitor,
+                        onDismiss: {
+                            dismiss()  // Also dismiss search view
+                        }
+                    )
+                }
+            }
+            .sheet(isPresented: $showChatView, onDismiss: {
+                dismiss()  // Also dismiss search view
+            }) {
+                if let conversation = selectedConversation {
+                    ChatDetailView(
+                        conversation: conversation,
+                        authService: authService,
+                        modelContext: modelContext
+                    )
+                }
+            }
         }
     }
     
@@ -102,7 +134,27 @@ struct UserSearchView: View {
             do {
                 let conversation = try await viewModel.createDirectConversation(with: user)
                 print("✅ Created/found conversation: \(conversation.id ?? "nil")")
-                dismiss()
+                
+                // Check if conversation has messages in SwiftData
+                if let conversationId = conversation.id {
+                    let messages = try? MessageCacheService.shared.fetchMessages(for: conversationId, in: modelContext)
+                    
+                    await MainActor.run {
+                        selectedUser = user
+                        selectedConversation = conversation
+                        
+                        if let messages = messages, !messages.isEmpty {
+                            // Has messages → go to chat
+                            print("✅ Conversation has messages → ChatDetailView")
+                            showChatView = true
+                        } else {
+                            // No messages → compose first message
+                            print("✅ No messages → ComposeMessageView")
+                            showComposeView = true
+                        }
+                        // Don't dismiss - let the sheet handle dismissal
+                    }
+                }
             } catch {
                 print("❌ Error creating conversation: \(error.localizedDescription)")
             }

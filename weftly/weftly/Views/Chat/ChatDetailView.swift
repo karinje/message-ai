@@ -114,6 +114,13 @@ struct ChatDetailView: View {
                             isCurrentUser: message.senderId == authService.currentUser?.id
                         )
                         .id(message.id)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                viewModel.deleteMessage(message)
+                            } label: {
+                                Label("Delete Message", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .padding()
@@ -315,10 +322,13 @@ struct MessageBubble: View {
     @ViewBuilder
     private var statusIcon: some View {
         switch message.status {
-        case .sending:
+        case .pending:
             Image(systemName: "clock")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.orange)
+        case .sending:
+            ProgressView()
+                .controlSize(.mini)
         case .sent:
             Image(systemName: "checkmark")
                 .font(.caption2)

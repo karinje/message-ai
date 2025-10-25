@@ -6,17 +6,23 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct NewGroupView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.modelContext) private var modelContext
+    
     let authService: AuthService
     let viewModel: ChatListViewModel
+    let networkMonitor: NetworkMonitor
     
     @State private var groupName = ""
     @State private var searchText = ""
     @State private var searchResults: [User] = []
     @State private var selectedUsers: Set<String> = []
     @State private var isCreating = false
+    @State private var showChatView = false
+    @State private var createdConversation: Conversation?
     
     private let firestoreService = FirestoreService()
     
@@ -134,6 +140,17 @@ struct NewGroupView: View {
                     .disabled(groupName.isEmpty || selectedUsers.count < 2 || isCreating)
                 }
             }
+            .sheet(isPresented: $showChatView, onDismiss: {
+                dismiss()  // Also dismiss group creation view
+            }) {
+                if let conversation = createdConversation {
+                    ChatDetailView(
+                        conversation: conversation,
+                        authService: authService,
+                        modelContext: modelContext
+                    )
+                }
+            }
         }
     }
     
@@ -162,12 +179,19 @@ struct NewGroupView: View {
                 let participants = selectedUsers.compactMap { selectedUserDetails[$0] }
                 print("👥 Resolved participants: \(participants.map { $0.displayName })")
                 
-                _ = try await viewModel.createGroupConversation(name: groupName, participants: participants)
-                dismiss()
+                let conversation = try await viewModel.createGroupConversation(name: groupName, participants: participants)
+                
+                await MainActor.run {
+                    createdConversation = conversation
+                    showChatView = true
+                    // Don't dismiss - let the sheet handle dismissal
+                }
             } catch {
                 print("Error creating group: \(error.localizedDescription)")
+                await MainActor.run {
+                    isCreating = false
+                }
             }
-            isCreating = false
         }
     }
 }

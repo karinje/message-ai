@@ -21,6 +21,7 @@ class ChatListViewModel: ObservableObject {
     private var lastMessageTimestamps: [String: Date] = [:]
     private var hasInitializedTimestamps = false
     private var activeConversationId: String?
+    private var allConversations: [Conversation] = []  // Unfiltered list
     
     init(authService: AuthService) {
         self.authService = authService
@@ -67,14 +68,18 @@ class ChatListViewModel: ObservableObject {
         firestoreService.listenToConversations(userId: userId) { [weak self] conversations in
             guard let self else { return }
             print("📨 ChatListViewModel: Received \(conversations.count) conversations from Firestore")
-            for conv in conversations {
-                print("  - Conv: \(conv.id ?? "no-id"), type: \(conv.type), participants: \(conv.participants.count)")
-            }
-            self.conversations = conversations
-            self.handleConversationUpdates(conversations: conversations)
             
-            // Background sync for unread counters (optimized - skips unchanged messages)
+            // Store ALL conversations (unfiltered)
+            self.allConversations = conversations
+            
+            // Set up message listeners for ALL conversations (before filtering)
+            // This ensures messages get cached even for initially empty conversations
             self.syncMessagesToCache(for: conversations)
+            
+            // THEN filter to only show conversations with messages in SwiftData
+            self.applyConversationFilter()
+            
+            self.handleConversationUpdates(conversations: self.conversations)
         }
     }
     
@@ -88,10 +93,11 @@ class ChatListViewModel: ObservableObject {
             firestoreService.listenToMessages(conversationId: conversationId) { [weak self] messages in
                 guard let self = self else { return }
                 
-                // Save to cache (optimized: skips unchanged messages automatically)
+                // Save to cache (optimized: skips unchanged messages automatically + tombstone check)
                 Task { @MainActor in
                     do {
-                        try MessageCacheService.shared.saveMessages(messages, in: context)
+                        guard let currentUserId = self.authService.currentUser?.id else { return }
+                        try MessageCacheService.shared.saveMessages(messages, currentUserId: currentUserId, in: context)
                         
                         // CRITICAL: Update conversation's lastMessage immediately (don't wait for Firestore)
                         // This prevents the 1-second delay in message preview
@@ -103,6 +109,9 @@ class ChatListViewModel: ObservableObject {
                             print("⚡️ Updated conversation preview immediately: \(lastMessage.text.prefix(20))...")
                         }
                         
+                        // Re-check filter: If conversation now has messages, it should appear
+                        self.refreshConversationList()
+                        
                         // Refresh UI
                         self.objectWillChange.send()
                     } catch {
@@ -111,6 +120,34 @@ class ChatListViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    private func applyConversationFilter() {
+        // Filter to only show conversations with messages in SwiftData
+        let filteredConversations = allConversations.filter { conversation in
+            guard let conversationId = conversation.id,
+                  let context = self.modelContext else { return true }
+            
+            do {
+                let messages = try MessageCacheService.shared.fetchMessages(for: conversationId, in: context)
+                return !messages.isEmpty
+            } catch {
+                return true
+            }
+        }
+        
+        print("✅ After filter: \(filteredConversations.count) conversations (removed \(allConversations.count - filteredConversations.count) empty)")
+        
+        for conv in filteredConversations {
+            print("  - Conv: \(conv.id ?? "no-id"), type: \(conv.type), participants: \(conv.participants.count)")
+        }
+        
+        self.conversations = filteredConversations
+    }
+    
+    private func refreshConversationList() {
+        // Re-run the filter to show conversations that now have messages
+        applyConversationFilter()
     }
     
     func stopListening() {
@@ -123,6 +160,9 @@ class ChatListViewModel: ObservableObject {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No current user"])
         }
         
+        // Just create/find conversation - don't modify deletedAt
+        // If deleted, old messages stay filtered (fresh start)
+        // New messages will appear (timestamp > deletedAt)
         return try await firestoreService.createDirectConversation(with: user, currentUser: currentUser)
     }
     
@@ -169,6 +209,33 @@ class ChatListViewModel: ObservableObject {
             ]
             NotificationService.shared.presentLocalDebugNotification(title: name, body: body, userInfo: userInfo)
             #endif
+        }
+    }
+    
+    // MARK: - Delete Conversation
+    
+    func deleteConversation(_ conversation: Conversation) {
+        guard let conversationId = conversation.id,
+              let userId = authService.currentUser?.id,
+              let context = modelContext else {
+            print("❌ Cannot delete conversation: missing required data")
+            return
+        }
+        
+        do {
+            // Delete all messages from SwiftData and set deletedAt timestamp
+            try MessageCacheService.shared.deleteAllMessagesInConversation(
+                conversationId,
+                userId: userId,
+                in: context
+            )
+            
+            // Remove from UI
+            conversations.removeAll { $0.id == conversationId }
+            
+            print("✅ Conversation deleted")
+        } catch {
+            print("❌ Error deleting conversation: \(error.localizedDescription)")
         }
     }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @ObservedObject var authService: AuthService
+    @StateObject private var networkMonitor = NetworkMonitor()
     @State private var selectedTab = 1 // Start on Chats tab
     
     var body: some View {
@@ -28,7 +29,7 @@ struct MainTabView: View {
                 .tag(1)
             
             // Tab 2: Chats (main tab)
-            ChatListView(authService: authService)
+            ChatListView(authService: authService, networkMonitor: networkMonitor)
                 .tabItem {
                     Label("Chats", systemImage: "message")
                 }

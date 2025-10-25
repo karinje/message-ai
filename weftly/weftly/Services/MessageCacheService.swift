@@ -41,11 +41,29 @@ class MessageCacheService {
     // MARK: - Message Cache Operations
     
     /// Save a message to local cache
-    func saveMessage(_ message: Message, in context: ModelContext) throws {
-        // Check if message already exists
+    func saveMessage(_ message: Message, currentUserId: String, in context: ModelContext) throws {
         guard let messageId = message.id else {
             print("⚠️ Cannot save message without ID")
             return
+        }
+        
+        // Check tombstones
+        if let state = try? getConversationState(
+            for: message.conversationId,
+            userId: currentUserId,
+            in: context
+        ) {
+            // Check 1: Individual message deleted
+            if state.isMessageDeleted(messageId) {
+                print("⏭️ Skipping individually deleted message: \(messageId)")
+                return
+            }
+            
+            // Check 2: Message older than conversation deletion
+            if let deletedAt = state.deletedAt, message.timestamp < deletedAt {
+                print("⏭️ Skipping message older than deletedAt: \(messageId)")
+                return
+            }
         }
         
         // Create a local copy of messageId to capture in predicate
@@ -98,11 +116,38 @@ class MessageCacheService {
     }
     
     /// Save multiple messages to cache (optimized batch version)
-    func saveMessages(_ messages: [Message], in context: ModelContext) throws {
+    func saveMessages(_ messages: [Message], currentUserId: String, in context: ModelContext) throws {
         var changesCount = 0
+        
+        // Get conversation state once for efficiency
+        let state: LocalConversationState? = {
+            if let firstMessage = messages.first {
+                return try? getConversationState(
+                    for: firstMessage.conversationId,
+                    userId: currentUserId,
+                    in: context
+                )
+            }
+            return nil
+        }()
         
         for message in messages {
             guard let messageId = message.id else { continue }
+            
+            // Check tombstones
+            if let state = state {
+                // Check 1: Individual message deleted
+                if state.isMessageDeleted(messageId) {
+                    print("⏭️ Batch: Skipping individually deleted message: \(messageId)")
+                    continue
+                }
+                
+                // Check 2: Message older than conversation deletion
+                if let deletedAt = state.deletedAt, message.timestamp < deletedAt {
+                    print("⏭️ Batch: Skipping message older than deletedAt: \(messageId)")
+                    continue
+                }
+            }
             
             let msgId = messageId  // Local copy for predicate
             let descriptor = FetchDescriptor<LocalMessage>(
@@ -186,14 +231,15 @@ class MessageCacheService {
         in context: ModelContext
     ) throws -> LocalConversationState {
         let convId = conversationId  // Local copy for predicate capture
+        let uid = userId  // Local copy for predicate capture
         let descriptor = FetchDescriptor<LocalConversationState>(
             predicate: #Predicate<LocalConversationState> { state in
-                state.conversationId == convId
+                state.conversationId == convId && state.userId == uid
             }
         )
         
         if let existing = try context.fetch(descriptor).first {
-            print("📂 Found existing state for \(conversationId): lastRead=\(existing.lastReadTimestamp)")
+            print("📂 Found existing state for \(conversationId)")
             return existing
         } else {
             // Create new state
@@ -203,7 +249,7 @@ class MessageCacheService {
             )
             context.insert(state)
             try context.save()
-            print("🆕 Created NEW state for \(conversationId): lastRead=\(state.lastReadTimestamp)")
+            print("🆕 Created NEW state for \(conversationId)")
             return state
         }
     }
@@ -222,6 +268,78 @@ class MessageCacheService {
         print("✅ Marking conversation as READ: \(conversationId) at \(Date())")
         state.markAsRead()
         try context.save()
+    }
+    
+    // MARK: - Delete Operations
+    
+    /// Delete a single message from local cache
+    func deleteMessage(
+        _ messageId: String,
+        conversationId: String,
+        userId: String,
+        in context: ModelContext
+    ) throws {
+        print("🗑️ Deleting message: \(messageId)")
+        
+        // Mark in tombstone to prevent re-caching
+        let state = try getConversationState(
+            for: conversationId,
+            userId: userId,
+            in: context
+        )
+        state.markMessageDeleted(messageId)
+        
+        // Delete from SwiftData
+        let idToFind = messageId
+        let descriptor = FetchDescriptor<LocalMessage>(
+            predicate: #Predicate<LocalMessage> { localMsg in
+                localMsg.id == idToFind
+            }
+        )
+        
+        if let message = try context.fetch(descriptor).first {
+            context.delete(message)
+            print("✅ Message deleted from cache")
+        }
+        
+        try context.save()
+    }
+    
+    /// Delete all messages in a conversation (local only)
+    func deleteAllMessagesInConversation(
+        _ conversationId: String,
+        userId: String,
+        in context: ModelContext
+    ) throws {
+        print("🗑️ Deleting all messages in conversation: \(conversationId)")
+        
+        // 1. Get all messages for this conversation
+        let convId = conversationId
+        let descriptor = FetchDescriptor<LocalMessage>(
+            predicate: #Predicate<LocalMessage> { localMsg in
+                localMsg.conversationId == convId
+            }
+        )
+        
+        let messages = try context.fetch(descriptor)
+        print("🗑️ Found \(messages.count) messages to delete")
+        
+        // Delete all messages
+        for message in messages {
+            context.delete(message)
+        }
+        
+        // Set deletedAt timestamp to prevent re-caching old messages
+        let state = try getConversationState(
+            for: conversationId,
+            userId: userId,
+            in: context
+        )
+        state.deletedAt = Date()
+        print("🕐 Set deletedAt to: \(state.deletedAt!)")
+        
+        try context.save()
+        print("✅ All messages deleted from conversation")
     }
     
     /// Calculate unread count for a conversation (100% local - KEY FIX)
