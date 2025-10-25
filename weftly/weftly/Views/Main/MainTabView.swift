@@ -10,7 +10,7 @@ import SwiftUI
 struct MainTabView: View {
     @ObservedObject var authService: AuthService
     @StateObject private var networkMonitor = NetworkMonitor()
-    @State private var selectedTab = 1 // Start on Chats tab
+    @State private var selectedTab = 2 // Start on Chats tab (tag 2)
     
     var body: some View {
         TabView(selection: $selectedTab) {

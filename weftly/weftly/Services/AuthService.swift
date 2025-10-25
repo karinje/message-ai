@@ -17,6 +17,7 @@ import SwiftData
 class AuthService: ObservableObject {
     @Published var currentUser: User?
     @Published var isAuthenticated = false
+    @Published var isCheckingAuth = true // NEW: Track initial auth check
     
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
@@ -30,11 +31,13 @@ class AuthService: ObservableObject {
                 if let user {
                     await self.fetchCurrentUser(userId: user.uid)
                     self.isAuthenticated = true
+                    self.isCheckingAuth = false
                     self.refreshFCMToken()
                 } else {
                     NotificationService.shared.clearFCMToken()
                     self.currentUser = nil
                     self.isAuthenticated = false
+                    self.isCheckingAuth = false
                 }
             }
         }
@@ -44,8 +47,12 @@ class AuthService: ObservableObject {
             Task {
                 await fetchCurrentUser(userId: firebaseUser.uid)
                 self.isAuthenticated = true
+                self.isCheckingAuth = false
                 self.refreshFCMToken()
             }
+        } else {
+            // No user, done checking
+            self.isCheckingAuth = false
         }
     }
     

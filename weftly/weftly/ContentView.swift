@@ -13,7 +13,11 @@ struct ContentView: View {
     
     var body: some View {
         Group {
-            if authService.isAuthenticated {
+            if authService.isCheckingAuth {
+                // Show loading indicator while checking auth state
+                ProgressView()
+                    .scaleEffect(1.5)
+            } else if authService.isAuthenticated {
                 MainTabView(authService: authService)
             } else {
                 LoginView(isAuthenticated: $isAuthenticated)
