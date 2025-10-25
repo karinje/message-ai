@@ -8,22 +8,37 @@ import {
 
 const CALENDAR_EXTRACTION_SYSTEM_PROMPT = `You are an AI assistant that extracts calendar events from conversational text messages.
 
-Your task:
-1. Identify ANY mentions of events, appointments, meetings, deadlines, or time-specific commitments
-2. Extract structured information: title, date, time (if mentioned), location (if mentioned)
-3. Assign a confidence score (0-1) based on how explicit the event details are
-4. Return ONLY valid JSON in the specified format
+CRITICAL: Only extract events that are:
+1. **Explicit commitments** with a specific event type (meeting, practice, party, dinner, appointment, etc.)
+2. **Have a time OR are all-day events** (don't default to arbitrary times)
+3. **Not vague invitations** ("want to attend?", "interested in going?")
+
+DO NOT extract:
+- Questions about attendance without commitment ("do you want to attend?")
+- Vague mentions without event type ("see you tomorrow" - doing what?)
+- Requests without time ("can we meet sometime?")
+
+Examples of VALID events:
+- "Let's meet tomorrow at 3pm for coffee" → ✅ meeting with time
+- "Soccer practice Tuesday 4:30pm" → ✅ practice with time
+- "Birthday party Friday" → ✅ party (all-day event OK)
+- "Dinner on Friday 7pm at Joe's" → ✅ dinner with time + location
+
+Examples of INVALID (skip these):
+- "Do you want to attend tomorrow?" → ❌ question, no event type or time
+- "Are you free tomorrow?" → ❌ availability check, not an event
+- "See you tomorrow!" → ❌ no event type or time
+- "Can we meet sometime?" → ❌ no specific date/time
 
 Guidelines:
-- Be generous in interpretation - extract even casual mentions like "let's meet tomorrow"
 - For relative dates (tomorrow, next week, etc.), calculate the actual date
-- If no time is mentioned, omit the time field
+- If no time is mentioned but it's a clear all-day event (party, birthday), that's OK
+- If no time and no clear event type, DO NOT extract
 - If location is mentioned (even informally like "at my place"), include it
 - Confidence scoring:
   * 0.9-1.0: Explicit event with date/time
-  * 0.7-0.9: Clear event but some details missing
-  * 0.5-0.7: Implied or casual mention
-  * < 0.5: Very vague or uncertain
+  * 0.7-0.9: Clear event type but time missing (all-day events)
+  * < 0.7: Too vague, skip it
 
 TIMEZONE CONTEXT:
 - User timezone: America/Los_Angeles (Pacific Time, UTC-8 during PST / UTC-7 during PDT)
@@ -43,14 +58,16 @@ IMPORTANT: You MUST respond with valid JSON matching this exact schema:
     {
       "title": "string",
       "date": "YYYY-MM-DD",
-      "time": "HH:MM" (24-hour format in UTC - already converted from PT),
+      "time": "HH:MM" (optional, 24-hour format in UTC - only include if time is specified),
       "location": "string" (optional),
       "confidence": number (0-1)
     }
   ]
 }
 
-If NO events are found, return: {"events": []}`;
+If NO events are found, return: {"events": []}
+
+CRITICAL: Only include "time" field if the message explicitly mentions a time. Do NOT default to 2pm or noon!`;
 
 /**
  * Extract calendar events from a message

@@ -2,16 +2,30 @@ import { createStructuredCompletion } from "../utils/openai";
 import { storeDeadlines } from "../utils/firestore";
 import { DeadlineExtractionResponse, Deadline } from "../types";
 
-const DEADLINE_EXTRACTION_SYSTEM_PROMPT = `You are an AI assistant that extracts deadlines, commitments, and action items from conversational messages.
+const DEADLINE_EXTRACTION_SYSTEM_PROMPT = `You are an AI assistant that extracts FUTURE deadlines and commitments from conversational messages.
 
-Your task: Identify any commitments, deadlines, or action items that require follow-up.
+CRITICAL: Only extract items that are:
+1. **Action items** that can be completed over time (bring, submit, pay, send, etc.)
+2. **Have a future due date** (not immediate/right now)
+3. **Not urgent emergencies** (skip "EMERGENCY", "NOW", "ASAP", "immediately")
 
-Examples of deadlines:
-- "Bring cupcakes by Friday" → deadline
-- "Need to submit forms by tomorrow" → deadline
-- "Can you pick up the kids at 3pm?" → action item with deadline
-- "RSVP by end of week" → deadline
-- "Payment due next Monday" → deadline
+DO NOT extract:
+- Immediate pickup requests ("pick up now", "come get me")
+- Emergency situations (these are priority messages, not deadlines)
+- Vague invitations without commitment ("want to attend?", "interested?")
+- Questions about attendance (these are RSVPs, not deadlines)
+
+Examples of VALID deadlines:
+- "Bring cupcakes by Friday" → ✅ deadline (future, actionable)
+- "Need to submit forms by tomorrow" → ✅ deadline (future due date)
+- "Payment due next Monday" → ✅ deadline (specific future date)
+- "Send me the document by end of week" → ✅ deadline (clear action + date)
+
+Examples of INVALID (skip these):
+- "EMERGENCY! Pick up Sam NOW" → ❌ urgent priority, not a deadline
+- "Can you come get me?" → ❌ immediate request, not a deadline
+- "Do you want to attend tomorrow?" → ❌ RSVP question, not a deadline
+- "Need help ASAP" → ❌ urgent request, not a deadline
 
 Guidelines:
 - Extract ONLY explicit commitments or requests

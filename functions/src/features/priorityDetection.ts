@@ -1,5 +1,5 @@
 import { createStructuredCompletion } from "../utils/openai";
-import { Priority } from "../types";
+import { Priority, PriorityDetectionResponse } from "../types";
 
 const PRIORITY_DETECTION_SYSTEM_PROMPT = `You are an AI assistant that classifies message urgency for busy parents.
 
@@ -49,16 +49,20 @@ export async function detectMessagePriority(
   }
 
   try {
-    const result = await createStructuredCompletion<Priority>(
+    const aiResponse = await createStructuredCompletion<PriorityDetectionResponse>(
       PRIORITY_DETECTION_SYSTEM_PROMPT,
       messageText,
       "gpt-4o-mini"
     );
 
-    console.log(`🚦 Priority detected: ${result.level} (confidence: ${result.confidence})`);
-    console.log(`📝 Reason: ${result.reason}`);
+    console.log(`🚦 Priority detected: ${aiResponse.priority} (confidence: ${aiResponse.confidence})`);
+    console.log(`📝 Reason: ${aiResponse.reason}`);
 
-    return result;
+    return {
+      level: aiResponse.priority,
+      confidence: aiResponse.confidence,
+      reason: aiResponse.reason,
+    };
   } catch (error) {
     console.error("❌ Priority detection failed:", error);
     // Default to normal on error
