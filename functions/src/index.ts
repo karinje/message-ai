@@ -2,8 +2,10 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { extractCalendarEvents as extractCalendarEventsFeature } from "./features/calendarExtraction";
 import { detectMessagePriority } from "./features/priorityDetection";
+import { extractDeadlines as extractDeadlinesFeature } from "./features/deadlineExtraction";
 import type {
   CalendarExtractionRequest,
+  DeadlineExtractionRequest,
   Message,
   Conversation,
 } from "./types";
@@ -54,6 +56,50 @@ export const extractCalendarEvents = functions.https.onCall(
 );
 
 /**
+ * Callable Function: Extract Deadlines
+ * Called from the iOS app when a user wants to extract deadlines from a message
+ */
+export const extractDeadlines = functions.https.onCall(
+  async (data: DeadlineExtractionRequest, context) => {
+    // Authentication check
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "User must be authenticated to use this function"
+      );
+    }
+
+    const { messageText, conversationId, messageId } = data;
+    const userId = context.auth.uid;
+
+    // Validation
+    if (!messageText || !conversationId || !messageId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Missing required fields: messageText, conversationId, messageId"
+      );
+    }
+
+    try {
+      const deadlines = await extractDeadlinesFeature({
+        messageText,
+        conversationId,
+        messageId,
+        userId,
+      });
+
+      return { deadlines };
+    } catch (error) {
+      console.error("Deadline extraction error:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        `Failed to extract deadlines: ${(error as Error).message}`
+      );
+    }
+  }
+);
+
+/**
  * Background Trigger: Handle new messages
  * - Send push notifications to participants
  * - Auto-extract calendar events from message text
@@ -94,6 +140,16 @@ export const onMessageCreated = functions.firestore
         .catch((error) => {
           console.error("Auto priority detection failed:", error);
         });
+
+      // Deadline extraction
+      extractDeadlinesFeature({
+        messageText: message.text,
+        conversationId,
+        messageId,
+        userId: message.senderId,
+      }).catch((error) => {
+        console.error("Auto deadline extraction failed:", error);
+      });
     }
 
     // Continue with push notification logic

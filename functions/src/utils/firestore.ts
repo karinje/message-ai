@@ -166,3 +166,39 @@ export async function getExtractedEvents(
   })) as ExtractedEvent[];
 }
 
+/**
+ * Store extracted deadlines in Firestore
+ * Deadlines are stored in users/{userId}/deadlines collection
+ */
+export async function storeDeadlines(
+  deadlines: import("../types").Deadline[]
+): Promise<void> {
+  const db = getFirestore();
+  const batch = db.batch();
+
+  for (const deadline of deadlines) {
+    const docRef = db
+      .collection("users")
+      .doc(deadline.userId)
+      .collection("deadlines")
+      .doc(deadline.id);
+
+    // Convert date string to Firestore Timestamp
+    const deadlineData = {
+      ...deadline,
+      dueDate: admin.firestore.Timestamp.fromDate(new Date(deadline.dueDate)),
+      createdAt: admin.firestore.Timestamp.now(),
+    };
+
+    // Remove undefined values
+    const cleanedDeadline = Object.fromEntries(
+      Object.entries(deadlineData).filter(([_, value]) => value !== undefined)
+    );
+
+    batch.set(docRef, cleanedDeadline);
+  }
+
+  await batch.commit();
+  console.log(`✅ Stored ${deadlines.length} deadlines`);
+}
+
