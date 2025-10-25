@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { extractCalendarEvents as extractCalendarEventsFeature } from "./features/calendarExtraction";
+import { detectMessagePriority } from "./features/priorityDetection";
 import type {
   CalendarExtractionRequest,
   Message,
@@ -66,8 +67,9 @@ export const onMessageCreated = functions.firestore
     const messageId = context.params.messageId;
     const db = admin.firestore();
 
-    // Run calendar extraction in background (don't block push notifications)
+    // Run AI features in background (don't block push notifications)
     if (message.text && message.text.trim().length >= 10) {
+      // Calendar extraction
       extractCalendarEventsFeature({
         messageText: message.text,
         conversationId,
@@ -75,6 +77,23 @@ export const onMessageCreated = functions.firestore
       }).catch((error) => {
         console.error("Auto calendar extraction failed:", error);
       });
+
+      // Priority detection
+      detectMessagePriority(message.text)
+        .then(async (priority) => {
+          // Only update if confidence is high
+          if (priority.confidence > 0.75) {
+            console.log(`🚦 Updating message priority: ${priority.level} (${priority.confidence})`);
+            await snapshot.ref.update({
+              priority: priority.level,
+              priorityReason: priority.reason,
+              priorityConfidence: priority.confidence,
+            });
+          }
+        })
+        .catch((error) => {
+          console.error("Auto priority detection failed:", error);
+        });
     }
 
     // Continue with push notification logic

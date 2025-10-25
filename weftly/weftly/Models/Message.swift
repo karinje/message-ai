@@ -21,6 +21,11 @@ struct Message: Identifiable, Codable, Equatable {
     var readBy: [String] // Array of user IDs who have read this message
     var localImageData: Data?
     
+    // AI Features - Priority Detection
+    var priority: String? // "urgent", "important", "normal"
+    var priorityReason: String?
+    var priorityConfidence: Double?
+    
     enum CodingKeys: String, CodingKey {
         case id
         case conversationId
@@ -32,9 +37,12 @@ struct Message: Identifiable, Codable, Equatable {
         case timestamp
         case status
         case readBy
+        case priority
+        case priorityReason
+        case priorityConfidence
     }
     
-    init(id: String? = nil, conversationId: String, senderId: String, senderName: String, senderProfileUrl: String? = nil, text: String, imageUrl: String? = nil, timestamp: Date = Date(), status: MessageStatus = .sending, readBy: [String] = [], localImageData: Data? = nil) {
+    init(id: String? = nil, conversationId: String, senderId: String, senderName: String, senderProfileUrl: String? = nil, text: String, imageUrl: String? = nil, timestamp: Date = Date(), status: MessageStatus = .sending, readBy: [String] = [], localImageData: Data? = nil, priority: String? = nil, priorityReason: String? = nil, priorityConfidence: Double? = nil) {
         self.id = id
         self.conversationId = conversationId
         self.senderId = senderId
@@ -46,6 +54,9 @@ struct Message: Identifiable, Codable, Equatable {
         self.status = status
         self.readBy = readBy
         self.localImageData = localImageData
+        self.priority = priority
+        self.priorityReason = priorityReason
+        self.priorityConfidence = priorityConfidence
     }
     
     // Convert from LocalMessage to Message
@@ -61,6 +72,9 @@ struct Message: Identifiable, Codable, Equatable {
         self.status = MessageStatus(rawValue: localMessage.status) ?? .pending
         self.readBy = localMessage.readBy
         self.localImageData = nil
+        self.priority = nil
+        self.priorityReason = nil
+        self.priorityConfidence = nil
     }
 }
 

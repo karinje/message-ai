@@ -93,7 +93,7 @@ export interface AIDecision {
 }
 
 export interface Priority {
-  level: "urgent" | "high" | "normal" | "low";
+  level: "urgent" | "important" | "normal";
   confidence: number;
   reason: string;
 }
@@ -111,7 +111,7 @@ export interface CalendarEventExtraction {
 }
 
 export interface PriorityDetectionResponse {
-  priority: "urgent" | "high" | "normal" | "low";
+  priority: "urgent" | "important" | "normal";
   confidence: number;
   reason: string;
   keywords?: string[];
