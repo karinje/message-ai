@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import * as functions from "firebase-functions";
 
 let openaiClient: OpenAI | null = null;
 
@@ -7,9 +8,10 @@ let openaiClient: OpenAI | null = null;
  */
 export function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY;
+    // Try environment variable first (for .env migration), then fall back to functions.config()
+    const apiKey = process.env.OPENAI_API_KEY || functions.config().openai?.api_key;
     if (!apiKey) {
-      throw new Error("OPENAI_API_KEY environment variable is not set");
+      throw new Error("OpenAI API key not configured. Set it via: firebase functions:config:set openai.api_key=\"YOUR_KEY\"");
     }
     openaiClient = new OpenAI({
       apiKey,

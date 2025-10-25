@@ -122,7 +122,12 @@ export async function storeExtractedEvents(
       extractedAt: new Date().toISOString(),
     };
 
-    batch.set(docRef, eventWithId);
+    // Remove undefined values (Firestore doesn't accept them)
+    const cleanedEvent = Object.fromEntries(
+      Object.entries(eventWithId).filter(([_, value]) => value !== undefined)
+    );
+
+    batch.set(docRef, cleanedEvent);
     storedEvents.push(eventWithId);
   }
 
