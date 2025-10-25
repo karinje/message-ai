@@ -3,6 +3,7 @@ import SwiftUI
 struct EventCardView: View {
     let event: ExtractedEvent
     let onAddToCalendar: () -> Void
+    var onDismiss: (() -> Void)? = nil
     
     var body: some View {
         HStack(spacing: 12) {
@@ -60,18 +61,31 @@ struct EventCardView: View {
             
             Spacer()
             
-            // Add to calendar button
-            if !event.addedToCalendar {
-                Button(action: onAddToCalendar) {
-                    Image(systemName: "calendar.badge.plus")
+            // Action buttons
+            HStack(spacing: 12) {
+                // Add to calendar button
+                if !event.addedToCalendar {
+                    Button(action: onAddToCalendar) {
+                        Image(systemName: "calendar.badge.plus")
+                            .font(.title3)
+                            .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(.green)
                 }
-                .buttonStyle(.plain)
-            } else {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.green)
+                
+                // Dismiss button
+                if let onDismiss = onDismiss {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
         .padding(12)

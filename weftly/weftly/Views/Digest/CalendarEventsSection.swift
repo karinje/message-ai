@@ -103,11 +103,19 @@ struct SectionGroup: View {
                 .padding(.top, 8)
             
             ForEach(events) { event in
-                EventCardView(event: event, onAddToCalendar: {
-                    Task {
-                        await viewModel.addEventToCalendar(event)
+                EventCardView(
+                    event: event,
+                    onAddToCalendar: {
+                        Task {
+                            await viewModel.addEventToCalendar(event)
+                        }
+                    },
+                    onDismiss: {
+                        Task {
+                            await viewModel.dismissEvent(event)
+                        }
                     }
-                })
+                )
             }
         }
     }

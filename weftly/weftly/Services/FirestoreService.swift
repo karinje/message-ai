@@ -449,7 +449,7 @@ class FirestoreService: ObservableObject {
     
     // MARK: - AI Features
     
-    func getExtractedEvents(conversationId: String) async throws -> [ExtractedEvent] {
+    func getExtractedEvents(conversationId: String, currentUserId: String? = nil) async throws -> [ExtractedEvent] {
         let snapshot = try await db.collection("conversations")
             .document(conversationId)
             .collection("extractedEvents")
@@ -459,7 +459,7 @@ class FirestoreService: ObservableObject {
         print("📥 Fetching extracted events for conversation: \(conversationId)")
         print("📦 Found \(snapshot.documents.count) event documents")
         
-        return snapshot.documents.compactMap { doc in
+        let allEvents = snapshot.documents.compactMap { doc -> ExtractedEvent? in
             print("🔍 Document \(doc.documentID) data: \(doc.data())")
             do {
                 let event = try doc.data(as: ExtractedEvent.self)
@@ -470,6 +470,15 @@ class FirestoreService: ObservableObject {
                 return nil
             }
         }
+        
+        // Filter out events dismissed by current user
+        if let userId = currentUserId {
+            let visibleEvents = allEvents.filter { !$0.isDismissedBy(userId: userId) }
+            print("📊 Visible events after filtering: \(visibleEvents.count)")
+            return visibleEvents
+        }
+        
+        return allEvents
     }
     
     func updateMessagePriority(
@@ -529,7 +538,7 @@ class FirestoreService: ObservableObject {
     // MARK: - Priority Messages
     
     /// Fetch urgent/important messages from the last 48 hours across all conversations
-    func getPriorityMessages(conversationIds: [String]) async throws -> [PriorityMessage] {
+    func getPriorityMessages(conversationIds: [String], currentUserId: String) async throws -> [PriorityMessage] {
         guard !conversationIds.isEmpty else {
             print("⚠️ No conversation IDs provided for priority messages")
             return []
@@ -599,8 +608,40 @@ class FirestoreService: ObservableObject {
         
         print("✅ Total priority messages found: \(allPriorityMessages.count)")
         
+        // Filter out messages dismissed by current user
+        let visibleMessages = allPriorityMessages.filter { !$0.isDismissedBy(userId: currentUserId) }
+        print("📊 Visible messages after filtering: \(visibleMessages.count)")
+        
         // Sort by timestamp (most recent first)
-        return allPriorityMessages.sorted { $0.timestamp > $1.timestamp }
+        return visibleMessages.sorted { $0.timestamp > $1.timestamp }
+    }
+    
+    /// Dismiss a priority message for the current user
+    func dismissPriorityMessage(messageId: String, conversationId: String, userId: String) async throws {
+        let docRef = db.collection("conversations")
+            .document(conversationId)
+            .collection("messages")
+            .document(messageId)
+        
+        try await docRef.updateData([
+            "dismissedBy": FieldValue.arrayUnion([userId])
+        ])
+        
+        print("✅ Priority message dismissed: \(messageId)")
+    }
+    
+    /// Dismiss a calendar event for the current user
+    func dismissEvent(eventId: String, conversationId: String, userId: String) async throws {
+        let docRef = db.collection("conversations")
+            .document(conversationId)
+            .collection("extractedEvents")
+            .document(eventId)
+        
+        try await docRef.updateData([
+            "dismissedBy": FieldValue.arrayUnion([userId])
+        ])
+        
+        print("✅ Event dismissed: \(eventId)")
     }
     
     deinit {

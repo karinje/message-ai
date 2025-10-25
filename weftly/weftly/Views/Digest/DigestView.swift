@@ -35,7 +35,7 @@ struct DigestView: View {
                         LazyVStack(spacing: 16) {
                             // Priority Messages Section (show at top - most urgent)
                             if !viewModel.priorityMessages.isEmpty {
-                                PriorityMessagesSection(messages: viewModel.priorityMessages)
+                                PriorityMessagesSection(messages: viewModel.priorityMessages, viewModel: viewModel)
                             }
                             
                             // Calendar Events Section
@@ -80,19 +80,6 @@ struct DigestView: View {
             }
             .navigationTitle("Digest")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if !viewModel.isLoading {
-                        Button(action: {
-                            Task {
-                                await viewModel.refresh()
-                            }
-                        }) {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                    }
-                }
-            }
         }
     }
 }

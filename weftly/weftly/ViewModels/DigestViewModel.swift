@@ -19,12 +19,27 @@ class DigestViewModel: ObservableObject {
     private let firestoreService = FirestoreService()
     private let authService: AuthService
     private var conversationIds: [String] = []
+    private var refreshTimer: Timer?
     
     init(authService: AuthService) {
         self.authService = authService
         Task {
             await loadAllInsights()
+            setupAutoRefresh()
         }
+    }
+    
+    private func setupAutoRefresh() {
+        // Auto-refresh every 30 seconds
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refresh(silent: true)
+            }
+        }
+    }
+    
+    deinit {
+        refreshTimer?.invalidate()
     }
     
     func loadAllInsights() async {
@@ -59,10 +74,10 @@ class DigestViewModel: ObservableObject {
         
         var allEvents: [ExtractedEvent] = []
         
-        // Fetch events from each conversation
+        // Fetch events from each conversation (filtered by current user)
         for conversationId in conversationIds {
             do {
-                let conversationEvents = try await aiService.getExtractedEvents(for: conversationId)
+                let conversationEvents = try await firestoreService.getExtractedEvents(conversationId: conversationId, currentUserId: currentUserId)
                 allEvents.append(contentsOf: conversationEvents)
             } catch {
                 print("❌ Error loading events from conversation \(conversationId): \(error)")
@@ -157,8 +172,27 @@ class DigestViewModel: ObservableObject {
         }
     }
     
-    func refresh() async {
-        await loadAllInsights()
+    func refresh(silent: Bool = false) async {
+        if !silent {
+            await loadAllInsights()
+        } else {
+            // Silent refresh - don't show loading indicator
+            await loadConversationIds()
+            
+            async let eventsTask = loadEvents()
+            async let rsvpsTask = loadRSVPs()
+            async let deadlinesTask = loadDeadlines()
+            async let decisionsTask = loadDecisions()
+            async let priorityMessagesTask = loadPriorityMessages()
+            
+            await eventsTask
+            await rsvpsTask
+            await deadlinesTask
+            await decisionsTask
+            await priorityMessagesTask
+            
+            lastRefreshed = Date()
+        }
     }
     
     // MARK: - Computed Properties
@@ -199,13 +233,52 @@ class DigestViewModel: ObservableObject {
     }
     
     private func loadPriorityMessages() async {
+        guard let currentUserId = authService.currentUser?.id else {
+            print("❌ No current user for loading priority messages")
+            return
+        }
+        
         print("🚀 loadPriorityMessages() called with \(conversationIds.count) conversation IDs")
         do {
-            let messages = try await firestoreService.getPriorityMessages(conversationIds: conversationIds)
+            let messages = try await firestoreService.getPriorityMessages(conversationIds: conversationIds, currentUserId: currentUserId)
             print("✅ Loaded \(messages.count) priority messages")
             self.priorityMessages = messages
         } catch {
             print("❌ Error loading priority messages: \(error)")
+        }
+    }
+    
+    func dismissPriorityMessage(_ message: PriorityMessage) async {
+        guard let currentUserId = authService.currentUser?.id else { return }
+        
+        do {
+            try await firestoreService.dismissPriorityMessage(
+                messageId: message.id,
+                conversationId: message.conversationId,
+                userId: currentUserId
+            )
+            // Remove from local list
+            priorityMessages.removeAll { $0.id == message.id }
+        } catch {
+            print("❌ Error dismissing priority message: \(error)")
+            errorMessage = "Failed to dismiss message"
+        }
+    }
+    
+    func dismissEvent(_ event: ExtractedEvent) async {
+        guard let currentUserId = authService.currentUser?.id else { return }
+        
+        do {
+            try await firestoreService.dismissEvent(
+                eventId: event.id,
+                conversationId: event.conversationId,
+                userId: currentUserId
+            )
+            // Remove from local list
+            events.removeAll { $0.id == event.id }
+        } catch {
+            print("❌ Error dismissing event: \(error)")
+            errorMessage = "Failed to dismiss event"
         }
     }
     

@@ -13,6 +13,7 @@ final class ExtractedEvent: Codable {
     var conversationId: String
     var extractedAt: Date
     var notified: Bool
+    var dismissedBy: [String]? // Array of user IDs who dismissed this event
     
     init(
         id: String = UUID().uuidString,
@@ -24,7 +25,8 @@ final class ExtractedEvent: Codable {
         messageId: String,
         conversationId: String,
         extractedAt: Date = Date(),
-        notified: Bool = false
+        notified: Bool = false,
+        dismissedBy: [String]? = nil
     ) {
         self.id = id
         self.title = title
@@ -36,13 +38,18 @@ final class ExtractedEvent: Codable {
         self.conversationId = conversationId
         self.extractedAt = extractedAt
         self.notified = notified
+        self.dismissedBy = dismissedBy
+    }
+    
+    func isDismissedBy(userId: String) -> Bool {
+        dismissedBy?.contains(userId) ?? false
     }
     
     // MARK: - Codable
     enum CodingKeys: String, CodingKey {
         case id, title, date, location, confidence
         case addedToCalendar, messageId, conversationId
-        case extractedAt, notified
+        case extractedAt, notified, dismissedBy
     }
     
     required init(from decoder: Decoder) throws {
@@ -77,6 +84,7 @@ final class ExtractedEvent: Codable {
         }
         
         self.notified = (try? container.decode(Bool.self, forKey: .notified)) ?? false
+        self.dismissedBy = try container.decodeIfPresent([String].self, forKey: .dismissedBy)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -91,6 +99,7 @@ final class ExtractedEvent: Codable {
         try container.encode(conversationId, forKey: .conversationId)
         try container.encode(extractedAt, forKey: .extractedAt)
         try container.encode(notified, forKey: .notified)
+        try container.encodeIfPresent(dismissedBy, forKey: .dismissedBy)
     }
 }
 

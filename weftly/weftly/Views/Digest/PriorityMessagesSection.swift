@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PriorityMessagesSection: View {
     let messages: [PriorityMessage]
+    let viewModel: DigestViewModel
     @State private var isExpanded = true
     
     var urgentMessages: [PriorityMessage] {
@@ -46,14 +47,14 @@ struct PriorityMessagesSection: View {
                     // Urgent messages first
                     if !urgentMessages.isEmpty {
                         ForEach(urgentMessages) { message in
-                            PriorityMessageCard(message: message)
+                            PriorityMessageCard(message: message, viewModel: viewModel)
                         }
                     }
                     
                     // Important messages second
                     if !importantMessages.isEmpty {
                         ForEach(importantMessages) { message in
-                            PriorityMessageCard(message: message)
+                            PriorityMessageCard(message: message, viewModel: viewModel)
                         }
                     }
                 }
@@ -68,12 +69,13 @@ struct PriorityMessagesSection: View {
 
 struct PriorityMessageCard: View {
     let message: PriorityMessage
+    let viewModel: DigestViewModel
     @State private var showDetails = false
     @State private var showChatHint = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header with priority badge
+            // Header with priority badge and dismiss button
             HStack {
                 if let priorityLevel = message.priorityLevel {
                     PriorityBadgeView(priority: priorityLevel, size: .medium)
@@ -84,6 +86,17 @@ struct PriorityMessageCard: View {
                 Text(message.timestamp, style: .relative)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                
+                Button(action: {
+                    Task {
+                        await viewModel.dismissPriorityMessage(message)
+                    }
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
             }
             
             // Sender name
@@ -160,7 +173,8 @@ struct PriorityMessageCard: View {
 
 #Preview {
     ScrollView {
-        PriorityMessagesSection(messages: [
+        PriorityMessagesSection(
+            messages: [
             PriorityMessage(
                 id: "1",
                 conversationId: "conv1",
@@ -183,7 +197,9 @@ struct PriorityMessageCard: View {
                 priorityReason: "The message requires attention today with a specific deadline",
                 priorityConfidence: 0.9
             )
-        ])
+        ],
+            viewModel: DigestViewModel(authService: AuthService())
+        )
         .padding()
     }
 }

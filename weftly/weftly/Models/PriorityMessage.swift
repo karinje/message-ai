@@ -11,6 +11,7 @@ struct PriorityMessage: Identifiable, Codable {
     let priority: String // "urgent" or "important"
     let priorityReason: String
     let priorityConfidence: Double
+    var dismissedBy: [String]? // Array of user IDs who dismissed this
     
     var priorityLevel: AIPriority? {
         AIPriority(rawValue: priority)
@@ -18,6 +19,10 @@ struct PriorityMessage: Identifiable, Codable {
     
     var isUrgent: Bool {
         priority == "urgent"
+    }
+    
+    func isDismissedBy(userId: String) -> Bool {
+        dismissedBy?.contains(userId) ?? false
     }
 }
 
