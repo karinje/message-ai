@@ -370,14 +370,11 @@ struct ConversationRow: View {
         HStack(spacing: 12) {
             // Avatar
             ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(Color.blue.opacity(0.2))
+                // Show generic head icon instead of initials
+                Image(systemName: conversation.type == .group ? "person.2.circle.fill" : "person.circle.fill")
+                    .resizable()
                     .frame(width: 50, height: 50)
-                    .overlay(
-                        Text(conversation.displayName(for: currentUserId).prefix(2).uppercased())
-                            .font(.headline)
-                            .foregroundStyle(.blue)
-                    )
+                    .foregroundStyle(Color(.systemGray3))
                 
                 // Online indicator for direct chats
                 if conversation.type == .direct && presenceViewModel.isOnline {
