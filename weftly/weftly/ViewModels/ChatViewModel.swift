@@ -79,7 +79,7 @@ class ChatViewModel: ObservableObject {
         }
         
         // 3. START FIRESTORE LISTENER (background sync)
-        firestoreService.listenToMessages(conversationId: conversationId) { [weak self] firestoreMessages in
+        firestoreService.listenToMessages(conversationId: conversationId, currentUserId: userId) { [weak self] firestoreMessages in
             guard let self = self else { return }
             
             print("🔥 Firestore listener fired with \(firestoreMessages.count) messages")
@@ -87,12 +87,32 @@ class ChatViewModel: ObservableObject {
             
             // Perform all UI updates on the main thread
             Task { @MainActor in
+                guard let currentUserId = self.authService.currentUser?.id else { return }
+                
                 // Save to cache (with status progression protection + tombstone check)
                 do {
-                    guard let currentUserId = self.authService.currentUser?.id else { return }
                     try MessageCacheService.shared.saveMessages(firestoreMessages, currentUserId: currentUserId, in: self.modelContext)
                 } catch {
                     print("❌ Error saving messages to cache: \(error)")
+                }
+                
+                // CRITICAL: Acknowledge delivery for each NEW message (ephemeral queue protocol)
+                for message in firestoreMessages {
+                    guard let messageId = message.id else { continue }
+                    
+                    // Only acknowledge if this message is FOR us (not sent BY us)
+                    if message.senderId != currentUserId {
+                        Task {
+                            do {
+                                try await self.firestoreService.acknowledgeDelivery(
+                                    messageId: messageId,
+                                    userId: currentUserId
+                                )
+                            } catch {
+                                print("❌ Error acknowledging delivery: \(error)")
+                            }
+                        }
+                    }
                 }
                 
                 // CRITICAL: UI must read from cache (single source of truth)

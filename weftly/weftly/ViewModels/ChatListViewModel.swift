@@ -84,13 +84,14 @@ class ChatListViewModel: ObservableObject {
     }
     
     private func syncMessagesToCache(for conversations: [Conversation]) {
-        guard let context = modelContext else { return }
+        guard let context = modelContext,
+              let currentUserId = authService.currentUser?.id else { return }
         
         for conversation in conversations {
             guard let conversationId = conversation.id else { continue }
             
             // Lightweight background sync: only listens, doesn't re-write unchanged messages
-            firestoreService.listenToMessages(conversationId: conversationId) { [weak self] messages in
+            firestoreService.listenToMessages(conversationId: conversationId, currentUserId: currentUserId) { [weak self] messages in
                 guard let self = self else { return }
                 
                 // Save to cache (optimized: skips unchanged messages automatically + tombstone check)
@@ -98,6 +99,25 @@ class ChatListViewModel: ObservableObject {
                     do {
                         guard let currentUserId = self.authService.currentUser?.id else { return }
                         try MessageCacheService.shared.saveMessages(messages, currentUserId: currentUserId, in: context)
+                        
+                        // CRITICAL: Acknowledge delivery for background sync (ephemeral queue protocol)
+                        for message in messages {
+                            guard let messageId = message.id else { continue }
+                            
+                            // Only acknowledge if this message is FOR us (not sent BY us)
+                            if message.senderId != currentUserId {
+                                Task {
+                                    do {
+                                        try await self.firestoreService.acknowledgeDelivery(
+                                            messageId: messageId,
+                                            userId: currentUserId
+                                        )
+                                    } catch {
+                                        print("❌ Error acknowledging delivery (background): \(error)")
+                                    }
+                                }
+                            }
+                        }
                         
                         // CRITICAL: Update conversation's lastMessage immediately (don't wait for Firestore)
                         // This prevents the 1-second delay in message preview

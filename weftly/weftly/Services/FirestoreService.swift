@@ -226,22 +226,46 @@ class FirestoreService: ObservableObject {
     // MARK: - Messages
     
     func sendMessage(_ message: Message) async throws -> Message {
-        guard let conversationId = message.id ?? UUID().uuidString as String? else {
+        guard let messageId = message.id ?? UUID().uuidString as String? else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid message ID"])
         }
         
         var messageToSend = message
-        messageToSend.id = conversationId
+        messageToSend.id = messageId
         messageToSend.status = .sent
         
+        // Get conversation to find all participants (RECIPIENTS)
+        let conversationDoc = try await db.collection("conversations")
+            .document(messageToSend.conversationId)
+            .getDocument()
+        
+        let conversation = try? conversationDoc.data(as: Conversation.self)
+        let allParticipants = conversation?.participants ?? []
+        
+        // recipientIds = all participants EXCEPT sender
+        let recipientIds = allParticipants.filter { $0 != messageToSend.senderId }
+        
+        print("📤 Sending message to \(recipientIds.count) recipients: \(recipientIds)")
+        
+        // EPHEMERAL MESSAGE QUEUE: Store in ROOT messages collection
         var messageData: [String: Any] = [
+            // Message content
             "conversationId": messageToSend.conversationId,
             "senderId": messageToSend.senderId,
             "senderName": messageToSend.senderName,
             "text": messageToSend.text,
             "timestamp": Timestamp(date: messageToSend.timestamp),
             "status": messageToSend.status.rawValue,
-            "readBy": messageToSend.readBy
+            "readBy": messageToSend.readBy,
+            
+            // DELIVERY TRACKING (Critical for ephemeral queue)
+            "recipientIds": recipientIds,              // Original recipients (immutable)
+            "pendingRecipientIds": recipientIds,       // Query uses this (shrinks on ack)
+            "deliveredTo": [],                         // Who has acknowledged (grows)
+            
+            // TTL (Time-to-live)
+            "createdAt": FieldValue.serverTimestamp(),
+            "expiresAt": Timestamp(date: Date().addingTimeInterval(7 * 24 * 60 * 60)) // 7 days
         ]
         
         // Only include optional fields if they have values
@@ -252,33 +276,20 @@ class FirestoreService: ObservableObject {
             messageData["imageUrl"] = imageUrl
         }
         
-        try await db.collection("conversations")
-            .document(messageToSend.conversationId)
-            .collection("messages")
-            .document(conversationId)
+        // CRITICAL CHANGE: Write to ROOT messages collection (not subcollection)
+        try await db.collection("messages")
+            .document(messageId)
             .setData(messageData)
         
-        // Get conversation to find all participants
-        let conversationDoc = try await db.collection("conversations")
-            .document(messageToSend.conversationId)
-            .getDocument()
+        print("✅ Message \(messageId) uploaded to ephemeral queue (expires in 7 days)")
         
-        let conversation = try? conversationDoc.data(as: Conversation.self)
-        let participants = conversation?.participants ?? []
-        
-        // Build unreadCount updates for all other participants
-        var unreadUpdates: [String: Any] = [:]
-        for participantId in participants where participantId != messageToSend.senderId {
-            unreadUpdates["unreadCount.\(participantId)"] = FieldValue.increment(Int64(1))
-        }
-        
-        // Update conversation's last message, timestamp, unread counts
-        var updates: [String: Any] = [
+        // Update conversation's last message and timestamp
+        // Note: unreadCount now calculated 100% locally, so we skip it
+        let updates: [String: Any] = [
             "lastMessage": messageToSend.text,
             "lastMessageSenderId": messageToSend.senderId,
             "lastMessageTime": FieldValue.serverTimestamp()
         ]
-        updates.merge(unreadUpdates) { _, new in new }
         
         try await db.collection("conversations")
             .document(messageToSend.conversationId)
@@ -306,12 +317,13 @@ class FirestoreService: ObservableObject {
         return try await sendMessage(message)
     }
     
-    func listenToMessages(conversationId: String, completion: @escaping ([Message]) -> Void) {
+    func listenToMessages(conversationId: String, currentUserId: String, completion: @escaping ([Message]) -> Void) {
         print("👂 Setting up Firestore message listener for conversation: \(conversationId)")
         
-        let listener = db.collection("conversations")
-            .document(conversationId)
-            .collection("messages")
+        // CRITICAL: Query uses pendingRecipientIds - stops matching after user acknowledges
+        let listener = db.collection("messages")
+            .whereField("conversationId", isEqualTo: conversationId)
+            .whereField("pendingRecipientIds", arrayContains: currentUserId)
             .order(by: "timestamp", descending: false)
             .addSnapshotListener { snapshot, error in
                 if let error = error {
@@ -349,8 +361,8 @@ class FirestoreService: ObservableObject {
                         }
                         
                     case .removed:
-                        // Message deleted from Firestore (future: admin delete)
-                        print("🗑️ Removed from Firestore: \(change.document.documentID)")
+                        // Message deleted from Firestore (ephemeral queue cleanup)
+                        print("🗑️ Removed from Firestore: \(change.document.documentID) (message delivered to all)")
                         // Don't add to changedMessages - it's deleted
                     }
                 }
@@ -370,6 +382,46 @@ class FirestoreService: ObservableObject {
     func removeMessageListener(conversationId: String) {
         messageListeners[conversationId]?.remove()
         messageListeners.removeValue(forKey: conversationId)
+    }
+    
+    // MARK: - Ephemeral Message Queue - Acknowledgment Protocol
+    
+    /// Acknowledge message delivery - adds userId to deliveredTo array
+    /// Once all recipients acknowledge, message auto-deletes from Firebase
+    func acknowledgeDelivery(messageId: String, userId: String) async throws {
+        let messageRef = db.collection("messages").document(messageId)
+        
+        print("📨 Acknowledging delivery: \(messageId) for user: \(userId)")
+        
+        // CRITICAL: Remove from pendingRecipientIds (stops query matching) AND add to deliveredTo
+        // Idempotent: arrayRemove/arrayUnion handle duplicates automatically
+        try await messageRef.updateData([
+            "pendingRecipientIds": FieldValue.arrayRemove([userId]),
+            "deliveredTo": FieldValue.arrayUnion([userId])
+        ])
+        
+        print("✅ Removed from pendingRecipientIds - message will stop matching query")
+        
+        // Check if all recipients acknowledged (for instant cleanup - optional)
+        let messageDoc = try await messageRef.getDocument()
+        guard let data = messageDoc.data() else {
+            print("⚠️ Message document not found (may have already been deleted)")
+            return
+        }
+        
+        let pendingRecipientIds = data["pendingRecipientIds"] as? [String] ?? []
+        let deliveredTo = data["deliveredTo"] as? [String] ?? []
+        
+        print("   pendingRecipientIds: \(pendingRecipientIds)")
+        print("   deliveredTo: \(deliveredTo)")
+        
+        // If pendingRecipientIds is empty, all acknowledged → delete instantly
+        if pendingRecipientIds.isEmpty {
+            print("✅ All recipients acknowledged - deleting message from Firebase queue")
+            try await messageRef.delete()
+        } else {
+            print("⏳ Still pending for: \(pendingRecipientIds.count) recipients")
+        }
     }
     
     func markMessageAsRead(messageId: String, conversationId: String, userId: String) async throws {

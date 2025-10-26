@@ -236,8 +236,9 @@ func deleteMessage(messageId: String) {
   imageUrl: "storage/path" (optional),
   
   // DELIVERY TRACKING
-  recipientIds: ["userA", "userB", "userC"],  // Who needs this
-  deliveredTo: ["userA"],                     // Who acknowledged (grows)
+  recipientIds: ["userA", "userB", "userC"],          // Original recipients
+  pendingRecipientIds: ["userB", "userC"],            // Query uses this (shrinks on ack)
+  deliveredTo: ["userA"],                             // Who acknowledged
   
   // TTL
   createdAt: Timestamp,

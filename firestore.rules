@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function: Check if user is the document owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // =========================================================================
+    // USERS COLLECTION
+    // =========================================================================
+    match /users/{userId} {
+      // Anyone authenticated can read user profiles (for contact search, etc.)
+      allow read: if isAuthenticated();
+      
+      // Users can only write their own profile
+      allow write: if isOwner(userId);
+      
+      // User subcollections (lists, broadcast lists, deadlines)
+      match /{subcollection}/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+    
+    // =========================================================================
+    // CONVERSATIONS COLLECTION
+    // =========================================================================
+    match /conversations/{conversationId} {
+      // Users can read conversations they're a participant in
+      allow read: if isAuthenticated() && 
+                     request.auth.uid in resource.data.participants;
+      
+      // Anyone authenticated can create conversations
+      allow create: if isAuthenticated();
+      
+      // Participants can update conversation metadata (typing indicators, etc.)
+      allow update: if isAuthenticated() && 
+                       request.auth.uid in resource.data.participants;
+      
+      // Subcollections (extractedEvents, decisions, rsvps)
+      match /{subcollection}/{docId} {
+        allow read: if isAuthenticated() && 
+                       request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow write: if isAuthenticated() && 
+                        request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+      }
+    }
+    
+    // =========================================================================
+    // MESSAGES COLLECTION (ROOT - EPHEMERAL QUEUE)
+    // =========================================================================
+    match /messages/{messageId} {
+      // Recipients can read their messages
+      // Check if current user is in pendingRecipientIds array (stops matching after ack)
+      allow read: if isAuthenticated() && 
+                     request.auth.uid in resource.data.pendingRecipientIds;
+      
+      // Authenticated users can create messages (sender creates)
+      // Must be the sender and must include pendingRecipientIds
+      allow create: if isAuthenticated() && 
+                       request.auth.uid == request.resource.data.senderId &&
+                       request.resource.data.pendingRecipientIds is list;
+      
+      // Recipients can update pendingRecipientIds and deliveredTo (acknowledgment protocol)
+      // - Must be a recipient (in current pendingRecipientIds)
+      // - Can only modify pendingRecipientIds and deliveredTo fields
+      allow update: if isAuthenticated() && 
+                       request.auth.uid in resource.data.pendingRecipientIds &&
+                       request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['pendingRecipientIds', 'deliveredTo']);
+      
+      // Cloud Functions can delete messages (TTL cleanup + acknowledgment)
+      // Or sender can delete (future: unsend feature)
+      allow delete: if isAuthenticated();
+    }
+    
+    // =========================================================================
+    // BROADCAST LISTS (optional - if you have broadcast feature)
+    // =========================================================================
+    match /users/{userId}/broadcastLists/{listId} {
+      allow read, write: if isOwner(userId);
+    }
+  }
+}
+
