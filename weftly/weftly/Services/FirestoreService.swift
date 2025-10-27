@@ -232,7 +232,6 @@ class FirestoreService: ObservableObject {
         
         var messageToSend = message
         messageToSend.id = messageId
-        messageToSend.status = .sent
         
         // Get conversation to find all participants (RECIPIENTS)
         let conversationDoc = try await db.collection("conversations")
@@ -503,40 +502,17 @@ class FirestoreService: ObservableObject {
     }
     
     func markMessageAsRead(messageId: String, conversationId: String, userId: String) async throws {
-        // FIXED: Update root messages collection (ephemeral queue architecture)
         do {
             try await db.collection("messages")
                 .document(messageId)
                 .updateData([
                     "readBy": FieldValue.arrayUnion([userId])
                 ])
-            
             print("📖 Marked message \(messageId) as read by \(userId)")
-            
-            // After marking as read, check if all recipients have read -> delete message from queue
-            let messageDoc = try await db.collection("messages").document(messageId).getDocument()
-            guard let data = messageDoc.data() else {
-                print("⚠️ Message document not found post-read (may already be deleted)")
-                return
-            }
-            
-            let recipientIds = data["recipientIds"] as? [String] ?? []
-            let readBy = data["readBy"] as? [String] ?? []
-            let deliveredTo = data["deliveredTo"] as? [String] ?? []
-            
-            let recipientsWhoRead = readBy.filter { $0 != userId }.filter { recipientIds.contains($0) }
-            if recipientsWhoRead.count == recipientIds.count {
-                // Everyone (except sender) has read
-                print("🧹 All recipients read message \(messageId) - deleting from queue")
-                try await db.collection("messages").document(messageId).delete()
-            } else {
-                print("⏳ Waiting for remaining readers: \(recipientIds.count - recipientsWhoRead.count)")
-            }
         } catch {
-            // Silently ignore "not found" errors - message already cleaned up from ephemeral queue
             let nsError = error as NSError
             if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 5 {
-                // Code 5 = NOT_FOUND - message already deleted, which is fine
+                // Message already cleaned up
                 print("⏭️ Message \(messageId) already deleted (ephemeral queue cleanup)")
             } else {
                 throw error

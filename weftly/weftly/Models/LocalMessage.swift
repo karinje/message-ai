@@ -15,6 +15,7 @@ final class LocalMessage {
     var conversationId: String
     var senderId: String
     var senderName: String
+    var senderProfileUrl: String?
     var text: String
     var imageUrl: String?
     var timestamp: Date
@@ -28,6 +29,7 @@ final class LocalMessage {
         conversationId: String,
         senderId: String,
         senderName: String,
+        senderProfileUrl: String? = nil,
         text: String,
         imageUrl: String? = nil,
         timestamp: Date,
@@ -40,6 +42,7 @@ final class LocalMessage {
         self.conversationId = conversationId
         self.senderId = senderId
         self.senderName = senderName
+        self.senderProfileUrl = senderProfileUrl
         self.text = text
         self.imageUrl = imageUrl
         self.timestamp = timestamp
@@ -56,6 +59,7 @@ final class LocalMessage {
             conversationId: message.conversationId,
             senderId: message.senderId,
             senderName: message.senderName,
+            senderProfileUrl: message.senderProfileUrl,
             text: message.text,
             imageUrl: message.imageUrl,
             timestamp: message.timestamp,

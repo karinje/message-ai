@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Nuke
 
 @main
 struct weftlyApp: App {
@@ -17,6 +18,11 @@ struct weftlyApp: App {
     let modelContainer: ModelContainer
     
     init() {
+        // Configure Nuke for aggressive caching
+        DataLoader.sharedUrlCache.diskCapacity = 200 * 1024 * 1024
+        ImageCache.shared.costLimit = 100 * 1024 * 1024
+        ImageCache.shared.countLimit = 200
+        
         let schema = Schema([
             PendingMessage.self,
             LocalMessage.self,

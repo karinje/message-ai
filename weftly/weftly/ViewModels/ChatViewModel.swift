@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import SwiftData
 import Combine
+import Nuke
 
 @MainActor
 class ChatViewModel: ObservableObject {
@@ -63,6 +64,9 @@ class ChatViewModel: ObservableObject {
         Task {
             await authService.updatePresence(isOnline: true)
         }
+        
+        // PRELOAD all profile pictures in this conversation
+        preloadAvatars()
         
         // 1. LOAD FROM CACHE FIRST (instant, works offline)
         loadMessagesFromCache()
@@ -167,7 +171,7 @@ class ChatViewModel: ObservableObject {
                     conversationId: localMsg.conversationId,
                     senderId: localMsg.senderId,
                     senderName: localMsg.senderName,
-                    senderProfileUrl: nil,
+                    senderProfileUrl: localMsg.senderProfileUrl,
                     text: localMsg.text,
                     imageUrl: localMsg.imageUrl,
                     timestamp: localMsg.timestamp,
@@ -209,7 +213,7 @@ class ChatViewModel: ObservableObject {
         pendingImageData = nil
     
         // Set initial status based on network
-        let initialStatus: MessageStatus = networkMonitor.isConnected ? .sending : .pending
+        let initialStatus: MessageStatus = networkMonitor.isConnected ? .sent : .pending
         
         let message = Message(
             id: UUID().uuidString,
@@ -432,6 +436,32 @@ class ChatViewModel: ObservableObject {
             print("✅ Message deleted successfully")
         } catch {
             print("❌ Error deleting message: \(error.localizedDescription)")
+        }
+    }
+    
+    // MARK: - Image Preloading
+    
+    private func preloadAvatars() {
+        // Get all unique profile URLs from conversation participants
+        let profileUrls = currentConversation.participantProfileUrls.values
+            .filter { !$0.isEmpty }
+            .compactMap { URL(string: $0) }
+        
+        guard !profileUrls.isEmpty else { return }
+        
+        print("🖼️ Preloading \(profileUrls.count) profile pictures...")
+        
+        // Preload all avatars in background (Nuke will cache them)
+        Task {
+            await withTaskGroup(of: Void.self) { group in
+                for url in profileUrls {
+                    group.addTask {
+                        let request = ImageRequest(url: url, priority: .high)
+                        _ = try? await ImagePipeline.shared.image(for: request)
+                    }
+                }
+            }
+            print("✅ Profile pictures preloaded and cached")
         }
     }
     

@@ -9,6 +9,7 @@ import SwiftUI
 import PhotosUI
 import SwiftData
 import NukeUI
+import Nuke
 
 struct ChatDetailView: View {
     let conversation: Conversation
@@ -98,7 +99,8 @@ struct ChatDetailView: View {
             GroupInfoHeader(
                 title: viewModel.currentConversation.groupName ?? "Group",
                 members: participantNames(for: viewModel),
-                currentUserName: authService.currentUser?.displayName
+                currentUserName: authService.currentUser?.displayName,
+                conversation: viewModel.currentConversation
             )
         }
     }
@@ -111,7 +113,8 @@ struct ChatDetailView: View {
                     ForEach(viewModel.messages) { message in
                         MessageBubble(
                             message: message,
-                            isCurrentUser: message.senderId == authService.currentUser?.id
+                            isCurrentUser: message.senderId == authService.currentUser?.id,
+                            conversation: viewModel.currentConversation
                         )
                         .id(message.id)
                         .contextMenu {
@@ -125,6 +128,7 @@ struct ChatDetailView: View {
                 }
                 .padding()
             }
+            .defaultScrollAnchor(.bottom)
             .onChange(of: viewModel.messages.count) { _, _ in
                 if let lastMessage = viewModel.messages.last {
                     withAnimation {
@@ -264,6 +268,18 @@ struct ChatDetailView: View {
 struct MessageBubble: View {
     let message: Message
     let isCurrentUser: Bool
+    let conversation: Conversation?  // Optional: Pass conversation for live avatar lookup
+    @State private var showProfileDetail = false
+    
+    // Get the most up-to-date profile URL
+    private var currentProfileUrl: String? {
+        // If conversation is passed, use live profile URL (updated when user changes photo)
+        if let conv = conversation {
+            return conv.participantProfileUrls[message.senderId]
+        }
+        // Fallback to historical URL stored in message
+        return message.senderProfileUrl
+    }
     
     var body: some View {
         let hasText = !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -271,14 +287,32 @@ struct MessageBubble: View {
         let hasRemoteImage = (message.imageUrl ?? "").isEmpty == false
         let hasImage = hasLocalImage || hasRemoteImage
         
-        HStack {
+        HStack(alignment: .bottom, spacing: 8) {
             if isCurrentUser { Spacer() }
+            
+            // Avatar for received messages (on the left)
+            if !isCurrentUser {
+                Button {
+                    showProfileDetail = true
+                } label: {
+                    UserAvatarView(
+                        profilePictureUrl: currentProfileUrl,  // ← Uses live URL!
+                        displayName: message.senderName,
+                        size: 32
+                    )
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showProfileDetail) {
+                    UserProfileDetailView(userId: message.senderId)
+                }
+            }
             
             VStack(alignment: isCurrentUser ? .trailing : .leading, spacing: 4) {
                 if !isCurrentUser && message.senderName.isEmpty == false {
                     Text(message.senderName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
                 }
                 
                 VStack(alignment: .leading, spacing: 8) {
@@ -312,6 +346,7 @@ struct MessageBubble: View {
                         statusIcon
                     }
                 }
+                .padding(.horizontal, 4)
             }
             
             if !isCurrentUser { Spacer() }
@@ -359,6 +394,7 @@ struct GroupInfoHeader: View {
     let title: String
     let members: [String]
     let currentUserName: String?
+    let conversation: Conversation
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -368,13 +404,15 @@ struct GroupInfoHeader: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(members, id: \.self) { name in
+                        let userId = conversation.participantNames.first(where: { $0.value == name })?.key
+                        let profileUrl = userId.flatMap { conversation.participantProfileUrls[$0] }
+                        
                         HStack(spacing: 6) {
-                            Text(initials(for: name))
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.white)
-                                .frame(width: 26, height: 26)
-                                .background(Circle().fill(Color.blue))
+                            UserAvatarView(
+                                profilePictureUrl: profileUrl,
+                                displayName: name,
+                                size: 26
+                            )
                             Text(displayName(for: name))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -395,14 +433,6 @@ struct GroupInfoHeader: View {
         .overlay(Divider(), alignment: .bottom)
     }
     
-    private func initials(for name: String) -> String {
-        name.split(separator: " ")
-            .prefix(2)
-            .map { String($0.first ?? Character("?")) }
-            .joined()
-            .uppercased()
-    }
-    
     private func displayName(for name: String) -> String {
         if let current = currentUserName, name == current {
             return "You"
@@ -415,16 +445,21 @@ struct RemoteImageView: View {
     let url: String
     
     var body: some View {
-        LazyImage(url: URL(string: url)) { state in
-            if let image = state.image {
+        AsyncImage(url: URL(string: url)) { phase in
+            switch phase {
+            case .success(let image):
                 image
                     .resizable()
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 16))
-            } else if state.isLoading {
+            case .empty:
                 ProgressView()
                     .frame(width: 200, height: 200)
-            } else {
+            case .failure:
+                Color(.systemGray5)
+                    .frame(width: 200, height: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            @unknown default:
                 Color(.systemGray5)
                     .frame(width: 200, height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 16))

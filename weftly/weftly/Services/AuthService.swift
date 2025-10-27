@@ -231,9 +231,15 @@ class AuthService: ObservableObject {
     func updateProfilePicture(url: String) async throws {
         guard let userId = currentUser?.id else { return }
         
+        // Update user document (just marks that user HAS a profile picture)
         try await db.collection("users").document(userId).updateData([
             "profilePictureUrl": url
         ])
+        
+        // NOTE: No need to update conversations!
+        // URL is always the same (overwrites same file in Storage)
+        // Everyone automatically sees new photo via cache invalidation
+        
         await fetchCurrentUser(userId: userId)
     }
     

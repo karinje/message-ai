@@ -232,22 +232,18 @@ struct ChatListView: View {
                             Label("Sign Out", systemImage: "arrow.right.square")
                         }
                     } label: {
-                        Group {
-                            if let user = authService.currentUser {
-                                Text(user.displayName.prefix(2).uppercased())
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(.white)
-                                    .frame(width: 32, height: 32)
-                                    .background(Color.blue)
-                                    .clipShape(Circle())
-                            } else {
-                                Circle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(width: 32, height: 32)
-                            }
+                        if let user = authService.currentUser {
+                            UserAvatarView(
+                                profilePictureUrl: user.profilePictureUrl,
+                                displayName: user.displayName,
+                                size: 32
+                            )
+                            .id(user.profilePictureUrl ?? user.id ?? "avatar")
+                        } else {
+                            Circle()
+                                .fill(Color.gray.opacity(0.3))
+                                .frame(width: 32, height: 32)
                         }
-                        .id(authService.currentUser?.id ?? "loading")
                     }
                 }
                 
@@ -350,6 +346,7 @@ struct ConversationRow: View {
     let currentUserId: String
     let unreadCount: Int  // Passed from parent (100% local calculation - KEY FIX)
     @StateObject private var presenceViewModel: PresenceViewModel
+    @State private var showProfileDetail = false
     
     init(conversation: Conversation, currentUserId: String, unreadCount: Int) {
         self.conversation = conversation
@@ -366,25 +363,48 @@ struct ConversationRow: View {
         _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId))
     }
     
+    private var otherUserId: String? {
+        conversation.participants.first(where: { $0 != currentUserId })
+    }
+    
+    private var avatarProfileUrl: String? {
+        if conversation.type == .group {
+            return nil // Groups use generic icon for now
+        } else if let otherId = otherUserId {
+            return conversation.participantProfileUrls[otherId]
+        }
+        return nil
+    }
+    
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar
-            ZStack(alignment: .bottomTrailing) {
-                // Show generic head icon instead of initials
-                Image(systemName: conversation.type == .group ? "person.2.circle.fill" : "person.circle.fill")
-                    .resizable()
-                    .frame(width: 50, height: 50)
-                    .foregroundStyle(Color(.systemGray3))
-                
-                // Online indicator for direct chats
-                if conversation.type == .direct && presenceViewModel.isOnline {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 12, height: 12)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white, lineWidth: 2)
-                        )
+            // Avatar (tappable for direct chats)
+            Button {
+                if conversation.type == .direct {
+                    showProfileDetail = true
+                }
+            } label: {
+                if conversation.type == .group {
+                    // Group icon
+                    Image(systemName: "person.2.circle.fill")
+                        .resizable()
+                        .frame(width: 50, height: 50)
+                        .foregroundStyle(Color(.systemGray3))
+                } else {
+                    // Direct chat - show profile picture
+                    UserAvatarView(
+                        profilePictureUrl: avatarProfileUrl,
+                        displayName: conversation.displayName(for: currentUserId),
+                        size: 50,
+                        showOnlineIndicator: true,
+                        isOnline: presenceViewModel.isOnline
+                    )
+                }
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showProfileDetail) {
+                if let otherId = otherUserId {
+                    UserProfileDetailView(userId: otherId)
                 }
             }
             

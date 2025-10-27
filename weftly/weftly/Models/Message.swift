@@ -65,7 +65,7 @@ struct Message: Identifiable, Codable, Equatable {
         self.conversationId = localMessage.conversationId
         self.senderId = localMessage.senderId
         self.senderName = localMessage.senderName
-        self.senderProfileUrl = nil  // LocalMessage doesn't store this
+        self.senderProfileUrl = localMessage.senderProfileUrl
         self.text = localMessage.text
         self.imageUrl = localMessage.imageUrl
         self.timestamp = localMessage.timestamp

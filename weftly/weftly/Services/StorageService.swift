@@ -37,7 +37,9 @@ class StorageService {
     }
     
     func uploadProfilePicture(_ image: UIImage, userId: String) async throws -> String {
-        let path = "profile_pictures/\(userId)/\(UUID().uuidString).jpg"
+        // CRITICAL: Use FIXED path so URL never changes
+        // New uploads overwrite the old photo → Everyone sees latest automatically
+        let path = "profile_pictures/\(userId).jpg"
         let result = try await uploadImage(image, path: path)
         return result.url
     }
