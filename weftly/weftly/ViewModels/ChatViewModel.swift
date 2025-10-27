@@ -112,18 +112,28 @@ class ChatViewModel: ObservableObject {
                     if message.senderId != currentUserId {
                         Task {
                             do {
-                                // Acknowledge delivery
+                                // Acknowledge delivery (ALWAYS acknowledge, regardless of privacy)
                                 try await self.firestoreService.acknowledgeDelivery(
                                     messageId: messageId,
                                     userId: currentUserId
                                 )
                                 
-                                // Mark as read (only NEW messages, not re-marking old ones)
-                                try await self.firestoreService.markMessageAsRead(
-                                    messageId: messageId,
-                                    conversationId: conversationId,
-                                    userId: currentUserId
+                                // Ensure sender's privacy settings are being listened to
+                                PrivacyManager.shared.startListeningToUser(userId: message.senderId)
+                                
+                                // Mark as read (check privacy settings first, unless group chat)
+                                let shouldSendReadReceipt = self.shouldSendReadReceipt(
+                                    senderId: message.senderId,
+                                    currentUserId: currentUserId
                                 )
+                                
+                                if shouldSendReadReceipt {
+                                    try await self.firestoreService.markMessageAsRead(
+                                        messageId: messageId,
+                                        conversationId: conversationId,
+                                        userId: currentUserId
+                                    )
+                                }
                             } catch {
                                 print("❌ Error acknowledging/marking read: \(error)")
                             }
@@ -332,11 +342,22 @@ class ChatViewModel: ObservableObject {
         for message in messagesToMark {
             if let messageId = message.id {
                 do {
-                    try await firestoreService.markMessageAsRead(
-                        messageId: messageId, 
-                        conversationId: conversationId, 
-                        userId: userId
+                    // Ensure sender's privacy settings are being listened to
+                    PrivacyManager.shared.startListeningToUser(userId: message.senderId)
+                    
+                    // Check privacy settings before sending read receipt (synchronous now!)
+                    let shouldSendReadReceipt = shouldSendReadReceipt(
+                        senderId: message.senderId,
+                        currentUserId: userId
                     )
+                    
+                    if shouldSendReadReceipt {
+                        try await firestoreService.markMessageAsRead(
+                            messageId: messageId, 
+                            conversationId: conversationId, 
+                            userId: userId
+                        )
+                    }
                 } catch {
                     // Ignore errors (message likely deleted from ephemeral queue)
                 }
@@ -463,6 +484,19 @@ class ChatViewModel: ObservableObject {
             }
             print("✅ Profile pictures preloaded and cached")
         }
+    }
+    
+    // MARK: - Privacy Checks
+    
+    /// Check if read receipt should be sent based on reciprocal privacy settings
+    /// Group chats ALWAYS send read receipts (bypass privacy settings)
+    private func shouldSendReadReceipt(senderId: String, currentUserId: String) -> Bool {
+        // Use shared PrivacyManager (real-time, synchronous!)
+        return PrivacyManager.shared.shouldSendReadReceipt(
+            senderId: senderId,
+            currentUserId: currentUserId,
+            isGroupChat: currentConversation.type == .group
+        )
     }
     
 }

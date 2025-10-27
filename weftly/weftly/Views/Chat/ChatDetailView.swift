@@ -56,7 +56,8 @@ struct ChatDetailView: View {
                     // Show custom header with online/last seen for 1:1 chats
                     ChatHeaderView(
                         displayName: viewModel.currentConversation.displayName(for: authService.currentUser?.id ?? ""),
-                        otherUserId: otherParticipantId(for: viewModel)
+                        otherUserId: otherParticipantId(for: viewModel),
+                        currentUserId: authService.currentUser?.id
                     )
                 } else {
                     // Show simple title for groups

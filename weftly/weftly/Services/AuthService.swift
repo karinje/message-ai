@@ -105,7 +105,11 @@ class AuthService: ObservableObject {
                 "displayName": newUser.displayName,
                 "profilePictureUrl": newUser.profilePictureUrl ?? "",
                 "isOnline": newUser.isOnline,
-                "lastSeen": Timestamp(date: newUser.lastSeen)
+                "lastSeen": Timestamp(date: newUser.lastSeen),
+                "privacySettings": [
+                    "lastSeenEnabled": true,  // Social by default: sharing enabled
+                    "readReceiptsEnabled": true
+                ]
             ])
             
             self.currentUser = newUser
@@ -146,7 +150,11 @@ class AuthService: ObservableObject {
             "email": user.email,
             "displayName": user.displayName,
             "isOnline": user.isOnline,
-            "lastSeen": Timestamp(date: user.lastSeen)
+            "lastSeen": Timestamp(date: user.lastSeen),
+            "privacySettings": [
+                "lastSeenEnabled": true,  // Social by default: sharing enabled
+                "readReceiptsEnabled": true
+            ]
         ])
         
         self.currentUser = user

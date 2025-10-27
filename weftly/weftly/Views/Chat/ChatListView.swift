@@ -370,7 +370,7 @@ struct ConversationRow: View {
         
         print("💬 ConversationRow init: convId=\(conversation.id ?? "nil"), participants=\(conversation.participants), current=\(currentUserId), other=\(otherUserId ?? "nil"), unread=\(unreadCount)")
         
-        _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId))
+        _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId, currentUserId: currentUserId))
     }
     
     private var otherUserId: String? {

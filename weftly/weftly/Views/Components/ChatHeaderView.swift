@@ -10,12 +10,14 @@ import SwiftUI
 struct ChatHeaderView: View {
     let displayName: String
     let otherUserId: String?
+    let currentUserId: String?
     @StateObject private var presenceViewModel: PresenceViewModel
     
-    init(displayName: String, otherUserId: String?) {
+    init(displayName: String, otherUserId: String?, currentUserId: String?) {
         self.displayName = displayName
         self.otherUserId = otherUserId
-        _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId))
+        self.currentUserId = currentUserId
+        _presenceViewModel = StateObject(wrappedValue: PresenceViewModel(userId: otherUserId, currentUserId: currentUserId))
     }
     
     var body: some View {

@@ -59,14 +59,21 @@ class PrivacyViewModel: ObservableObject {
     }
     
     private func saveSettings() async {
-        guard let userId = authService.currentUser?.id else { return }
+        guard let userId = authService.currentUser?.id else {
+            print("⚠️ PrivacyViewModel: Cannot save - no userId")
+            return
+        }
+        
+        print("💾 PrivacyViewModel: Saving privacy settings - lastSeen:\(lastSeenEnabled), readReceipts:\(readReceiptsEnabled)")
         
         do {
             try await db.collection("users").document(userId).updateData([
                 "privacySettings.lastSeenEnabled": lastSeenEnabled,
                 "privacySettings.readReceiptsEnabled": readReceiptsEnabled
             ])
+            print("✅ PrivacyViewModel: Privacy settings saved successfully")
         } catch {
+            print("❌ PrivacyViewModel: Error saving privacy settings: \(error.localizedDescription)")
             self.errorMessage = "Error saving privacy settings: \(error.localizedDescription)"
         }
     }

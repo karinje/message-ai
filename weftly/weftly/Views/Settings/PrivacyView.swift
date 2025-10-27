@@ -10,28 +10,43 @@ import SwiftUI
 struct PrivacyView: View {
     @ObservedObject var viewModel: PrivacyViewModel
     
+    // Computed properties to invert the logic for UI display
+    private var lastSeenPrivacyEnabled: Binding<Bool> {
+        Binding(
+            get: { !viewModel.lastSeenEnabled },
+            set: { viewModel.lastSeenEnabled = !$0 }
+        )
+    }
+    
+    private var readReceiptsPrivacyEnabled: Binding<Bool> {
+        Binding(
+            get: { !viewModel.readReceiptsEnabled },
+            set: { viewModel.readReceiptsEnabled = !$0 }
+        )
+    }
+    
     var body: some View {
         List {
             Section {
-                Toggle(isOn: $viewModel.lastSeenEnabled) {
+                Toggle(isOn: lastSeenPrivacyEnabled) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Last seen and online")
+                        Text("Hide last seen and online")
                             .font(.body)
-                        Text("If you don't share your Last Seen and Online, you won't be able to see other people's Last Seen and Online.")
+                        Text("When enabled, you won't share your Last Seen and Online status, and you won't be able to see others' either.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             } header: {
-                Text("Who can see my personal info")
+                Text("Privacy Controls")
             }
             
             Section {
-                Toggle(isOn: $viewModel.readReceiptsEnabled) {
+                Toggle(isOn: readReceiptsPrivacyEnabled) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Read receipts")
+                        Text("Hide read receipts")
                             .font(.body)
-                        Text("If you don't share your Read Receipts, you won't be able to see other people's Read Receipts.")
+                        Text("When enabled, you won't send Read Receipts, and you won't be able to see others' either.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

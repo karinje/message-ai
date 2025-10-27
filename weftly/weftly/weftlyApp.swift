@@ -91,6 +91,11 @@ struct weftlyApp: App {
                     // Set initial online presence when app launches
                     if authService.isAuthenticated {
                         await authService.updatePresence(isOnline: true)
+                        
+                        // Initialize PrivacyManager with current user (single listener)
+                        if let userId = authService.currentUser?.id {
+                            await PrivacyManager.shared.startListeningToCurrentUser(userId: userId)
+                        }
                     }
                 }
         }
@@ -102,6 +107,16 @@ struct weftlyApp: App {
             if newValue {
                 Task {
                     await authService.updatePresence(isOnline: true)
+                    
+                    // Start PrivacyManager listener
+                    if let userId = authService.currentUser?.id {
+                        await PrivacyManager.shared.startListeningToCurrentUser(userId: userId)
+                    }
+                }
+            } else {
+                // User signed out - stop privacy listener
+                Task {
+                    await PrivacyManager.shared.stopListeningToCurrentUser()
                 }
             }
         }

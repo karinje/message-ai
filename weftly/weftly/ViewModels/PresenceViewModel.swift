@@ -15,28 +15,49 @@ class PresenceViewModel: ObservableObject {
     @Published var lastSeen: Date?
     
     private let userId: String?
+    private let currentUserId: String?
     private let db = Firestore.firestore()
-    private var listener: ListenerRegistration?
+    private var targetUserListener: ListenerRegistration?
+    private var privacyCancellable: AnyCancellable?
     
-    init(userId: String?) {
+    // Cache the latest presence data to avoid redundant checks
+    private var latestIsOnline: Bool = false
+    private var latestLastSeen: Date?
+    
+    init(userId: String?, currentUserId: String? = nil) {
         self.userId = userId
+        self.currentUserId = currentUserId
         
         if let userId = userId {
             print("🎯 PresenceViewModel init for user: \(userId)")
             startListening(userId: userId)
+            
+            // Start listening to this user's privacy settings via PrivacyManager
+            PrivacyManager.shared.startListeningToUser(userId: userId)
+            
+            // Listen to PrivacyManager's privacy changes (both users)
+            if currentUserId != nil {
+                subscribeToPrivacyChanges()
+            }
         } else {
             print("⚠️ PresenceViewModel init with nil userId")
         }
     }
     
     deinit {
-        listener?.remove()
+        targetUserListener?.remove()
+        privacyCancellable?.cancel()
+        
+        // Stop listening to this user's privacy when view is destroyed
+        if let userId = userId {
+            PrivacyManager.shared.stopListeningToUser(userId: userId)
+        }
     }
     
     private func startListening(userId: String) {
         print("🔊 Starting presence listener for user: \(userId)")
         
-        listener = db.collection("users")
+        targetUserListener = db.collection("users")
             .document(userId)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self = self else { return }
@@ -89,11 +110,54 @@ class PresenceViewModel: ObservableObject {
                 
                 print("👤 User \(userId): isOnline=\(isOnlineBool), lastSeen=\(Int(timeSinceLastSeen))s ago, computed=\(calculatedOnline)")
                 
+                // Cache the latest presence data and apply privacy check
                 Task { @MainActor in
-                    self.isOnline = calculatedOnline
-                    self.lastSeen = lastSeen
+                    self.latestIsOnline = calculatedOnline
+                    self.latestLastSeen = lastSeen
+                    
+                    // Apply privacy check and update UI (synchronous now!)
+                    self.updatePresenceWithPrivacyCheck(targetUserId: userId)
                 }
             }
+    }
+    
+    /// Subscribe to shared PrivacyManager's privacy changes (both current user and target user)
+    private func subscribeToPrivacyChanges() {
+        // Listen to any privacy changes (either user)
+        privacyCancellable = PrivacyManager.shared.$userPrivacySettings
+            .dropFirst() // Skip initial value
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                
+                if let targetUserId = self.userId {
+                    self.updatePresenceWithPrivacyCheck(targetUserId: targetUserId)
+                }
+            }
+    }
+    
+    /// Update presence display based on latest presence data and current privacy settings
+    private func updatePresenceWithPrivacyCheck(targetUserId: String) {
+        guard let currentUserId = currentUserId else {
+            // No privacy check possible - show presence
+            self.isOnline = latestIsOnline
+            self.lastSeen = latestLastSeen
+            return
+        }
+        
+        // Use shared PrivacyManager (real-time, no async needed!)
+        let shouldShowPresence = PrivacyManager.shared.shouldShowPresence(
+            targetUserId: targetUserId,
+            currentUserId: currentUserId
+        )
+        
+        if shouldShowPresence {
+            self.isOnline = latestIsOnline
+            self.lastSeen = latestLastSeen
+        } else {
+            // Privacy disabled - always show offline
+            self.isOnline = false
+            self.lastSeen = nil
+        }
     }
 }
 
