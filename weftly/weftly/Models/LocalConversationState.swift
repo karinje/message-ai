@@ -19,13 +19,19 @@ final class LocalConversationState {
     var deletedAt: Date?             // When conversation was deleted (ignore messages before this)
     var deletedMessageIds: [String]  // Individual messages deleted by user
     
+    // PR #28: AI indexing per conversation
+    var aiIndexingEnabled: Bool      // Whether AI processes messages in this thread
+    var lastProcessedMessageId: String? // Last message processed by AI
+    var lastProcessedAt: Date?       // When last processed
+    
     init(
         conversationId: String,
         userId: String,
         lastReadTimestamp: Date = .distantPast,
         lastViewedTimestamp: Date = .distantPast,
         deletedAt: Date? = nil,
-        deletedMessageIds: [String] = []
+        deletedMessageIds: [String] = [],
+        aiIndexingEnabled: Bool = false
     ) {
         self.uniqueId = "\(conversationId)_\(userId)"
         self.conversationId = conversationId
@@ -34,6 +40,9 @@ final class LocalConversationState {
         self.lastViewedTimestamp = lastViewedTimestamp
         self.deletedAt = deletedAt
         self.deletedMessageIds = deletedMessageIds
+        self.aiIndexingEnabled = aiIndexingEnabled
+        self.lastProcessedMessageId = nil
+        self.lastProcessedAt = nil
     }
     
     // Mark conversation as read

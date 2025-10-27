@@ -24,11 +24,16 @@ struct weftlyApp: App {
         ImageCache.shared.countLimit = 200
         
         let schema = Schema([
+            // Core messaging
             PendingMessage.self,
             LocalMessage.self,
             LocalConversationState.self,
-            ExtractedEvent.self,
-            Deadline.self
+            // PR #28: New unified agent Digest models
+            DigestEvent.self,
+            DigestDeadline.self,
+            DigestPriorityMessage.self,
+            DigestRSVP.self,
+            DigestSuggestion.self
         ])
         
         do {

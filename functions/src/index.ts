@@ -1,103 +1,17 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { extractCalendarEvents as extractCalendarEventsFeature } from "./features/calendarExtraction";
-import { detectMessagePriority } from "./features/priorityDetection";
-import { extractDeadlines as extractDeadlinesFeature } from "./features/deadlineExtraction";
-import type {
-  CalendarExtractionRequest,
-  DeadlineExtractionRequest,
-  Message,
-  Conversation,
-} from "./types";
+import type { Message, Conversation } from "./types";
 
 // Initialize Firebase Admin
 admin.initializeApp();
 
-/**
- * Callable Function: Extract Calendar Events
- * Called from the iOS app when a user wants to extract calendar events from a message
- */
-export const extractCalendarEvents = functions.https.onCall(
-  async (data: CalendarExtractionRequest, context) => {
-    // Authentication check
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        "unauthenticated",
-        "User must be authenticated to use this function"
-      );
-    }
+// ============================================================================
+// Unified Agent callables (new architecture)
+// ============================================================================
+export { processMessage } from './functions/processMessage';
+export { aiChatQuery } from './functions/aiChatQuery';
+// ============================================================================
 
-    const { messageText, conversationId, messageId } = data;
-
-    // Validation
-    if (!messageText || !conversationId || !messageId) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Missing required fields: messageText, conversationId, messageId"
-      );
-    }
-
-    try {
-      const events = await extractCalendarEventsFeature({
-        messageText,
-        conversationId,
-        messageId,
-      });
-
-      return { events };
-    } catch (error) {
-      console.error("Calendar extraction error:", error);
-      throw new functions.https.HttpsError(
-        "internal",
-        `Failed to extract calendar events: ${(error as Error).message}`
-      );
-    }
-  }
-);
-
-/**
- * Callable Function: Extract Deadlines
- * Called from the iOS app when a user wants to extract deadlines from a message
- */
-export const extractDeadlines = functions.https.onCall(
-  async (data: DeadlineExtractionRequest, context) => {
-    // Authentication check
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        "unauthenticated",
-        "User must be authenticated to use this function"
-      );
-    }
-
-    const { messageText, conversationId, messageId } = data;
-    const userId = context.auth.uid;
-
-    // Validation
-    if (!messageText || !conversationId || !messageId) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Missing required fields: messageText, conversationId, messageId"
-      );
-    }
-
-    try {
-      const deadlines = await extractDeadlinesFeature({
-        messageText,
-        conversationId,
-        messageId,
-        userId,
-      });
-
-      return { deadlines };
-    } catch (error) {
-      console.error("Deadline extraction error:", error);
-      throw new functions.https.HttpsError(
-        "internal",
-        `Failed to extract deadlines: ${(error as Error).message}`
-      );
-    }
-  }
-);
 
 /**
  * Background Trigger: Handle new messages
@@ -110,47 +24,10 @@ export const onMessageCreated = functions.firestore
   .onCreate(async (snapshot, context) => {
     const message = snapshot.data() as Message;
     const conversationId = context.params.conversationId;
-    const messageId = context.params.messageId;
+    // messageId available via context.params.messageId if needed for logging
     const db = admin.firestore();
 
-    // Run AI features in background (don't block push notifications)
-    if (message.text && message.text.trim().length >= 10) {
-      // Calendar extraction
-      extractCalendarEventsFeature({
-        messageText: message.text,
-        conversationId,
-        messageId,
-      }).catch((error) => {
-        console.error("Auto calendar extraction failed:", error);
-      });
-
-      // Priority detection
-      detectMessagePriority(message.text)
-        .then(async (priority) => {
-          // Only update if confidence is high
-          if (priority.confidence > 0.75) {
-            console.log(`🚦 Updating message priority: ${priority.level} (${priority.confidence})`);
-            await snapshot.ref.update({
-              priority: priority.level,
-              priorityReason: priority.reason,
-              priorityConfidence: priority.confidence,
-            });
-          }
-        })
-        .catch((error) => {
-          console.error("Auto priority detection failed:", error);
-        });
-
-      // Deadline extraction
-      extractDeadlinesFeature({
-        messageText: message.text,
-        conversationId,
-        messageId,
-        userId: message.senderId,
-      }).catch((error) => {
-        console.error("Auto deadline extraction failed:", error);
-      });
-    }
+    // PR #25: AI processing removed from triggers. iOS will call processMessage when enabled.
 
     // Continue with push notification logic
     if (!message || !message.senderId || !conversationId) {
@@ -367,48 +244,11 @@ export const onRootMessageCreated = functions.firestore
     const conversationId = message.conversationId;
     const db = admin.firestore();
 
-    console.log(`📩 New message in queue: ${messageId} for conversation ${conversationId}`);
-
-    // Run AI features in background (don't block push notifications)
-    if (message.text && message.text.trim().length >= 10) {
-      // Calendar extraction (use conversationId from message data)
-      extractCalendarEventsFeature({
-        messageText: message.text,
-        conversationId: conversationId,
-        messageId,
-      }).catch((error) => {
-        console.error("Auto calendar extraction failed:", error);
-      });
-
-      // Priority detection
-      detectMessagePriority(message.text)
-        .then(async (priority) => {
-          // Only update if confidence is high
-          if (priority.confidence > 0.75) {
-            console.log(
-              `🚦 Updating message priority: ${priority.level} (${priority.confidence})`
-            );
-            await snapshot.ref.update({
-              priority: priority.level,
-              priorityReason: priority.reason,
-              priorityConfidence: priority.confidence,
-            });
-          }
-        })
-        .catch((error) => {
-          console.error("Auto priority detection failed:", error);
-        });
-
-      // Deadline extraction
-      extractDeadlinesFeature({
-        messageText: message.text,
-        conversationId: conversationId,
-        messageId,
-        userId: message.senderId,
-      }).catch((error) => {
-        console.error("Auto deadline extraction failed:", error);
-      });
+    if (messageId) {
+      console.log(`📩 New message in queue: ${messageId} for conversation ${conversationId}`);
     }
+
+    // PR #25: AI processing removed from triggers. iOS will call processMessage when enabled.
 
     // Continue with push notification logic
     if (!message || !message.senderId || !conversationId) {

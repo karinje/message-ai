@@ -30,56 +30,107 @@ class AIService: ObservableObject {
     private init() {}
     
     // MARK: - Message Processing
-    func processNewMessage(_ message: Message) async {
+    // PR #31: New unified agent implementation
+    func processNewMessage(_ message: Message, conversation: Conversation, context: ModelContext) async {
         guard isEnabled else { return }
         
-        processingQueue.append(message)
-        
-        if !isProcessing {
-            await processQueue()
-        }
-    }
-    
-    private func processQueue() async {
-        isProcessing = true
-        
-        while !processingQueue.isEmpty {
-            let message = processingQueue.removeFirst()
-            
-            // Run AI features in parallel
-            async let calendarTask: Void = extractCalendarIfEnabled(message)
-            async let deadlineTask: Void = extractDeadlinesIfEnabled(message)
-            async let priorityTask: Void = detectPriorityIfEnabled(message)
-            
-            await calendarTask
-            await deadlineTask
-            await priorityTask
+        // 1. Check if AI indexing enabled for this conversation
+        let descriptor = FetchDescriptor<LocalConversationState>(
+            predicate: #Predicate { $0.conversationId == conversation.id }
+        )
+        guard let state = try? context.fetch(descriptor).first,
+              state.aiIndexingEnabled else {
+            return // AI not enabled for this thread
         }
         
-        isProcessing = false
-    }
-    
-    // MARK: - Calendar Extraction
-    private func extractCalendarIfEnabled(_ message: Message) async {
-        guard calendarExtractionEnabled, !message.text.isEmpty else { return }
+        // 2. Get recent messages from SwiftData
+        let recentDescriptor = FetchDescriptor<LocalMessage>(
+            predicate: #Predicate { $0.conversationId == conversation.id },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        var recentDescriptor2 = recentDescriptor
+        recentDescriptor2.fetchLimit = 50
+        
+        let recentMessages = (try? context.fetch(recentDescriptor2).reversed()) ?? []
+        
+        // 3. Call Firebase Function
+        let callable = functionsService.functions.httpsCallable("processMessage")
+        
+        let requestData: [String: Any] = [
+            "userId": functionsService.currentUserId ?? "",
+            "conversationId": conversation.id,
+            "newMessage": [
+                "id": message.id ?? UUID().uuidString,
+                "text": message.text,
+                "senderId": message.senderId,
+                "senderName": message.senderName,
+                "timestamp": Int(message.timestamp.timeIntervalSince1970 * 1000)
+            ],
+            "recentMessages": recentMessages.map { [
+                "id": $0.id,
+                "text": $0.text,
+                "senderId": $0.senderId,
+                "senderName": $0.senderName,
+                "timestamp": Int($0.timestamp.timeIntervalSince1970 * 1000)
+            ]}
+        ]
         
         do {
-            let events = try await functionsService.extractCalendarEvents(
-                messageText: message.text,
-                conversationId: message.conversationId,
-                messageId: message.id ?? UUID().uuidString
-            )
+            let result = try await callable.call(requestData)
             
-            if !events.isEmpty {
-                print("📅 Extracted \(events.count) calendar event(s) from message")
-                // Store in Firestore automatically by the function
-                // Invalidate cache
-                eventCache.removeValue(forKey: message.conversationId)
-            }
+            // 4. Update last processed
+            state.lastProcessedMessageId = message.id
+            state.lastProcessedAt = Date()
+            try? context.save()
+            
+            print("✅ Message processed by unified agent")
         } catch {
-            print("⚠️ Calendar extraction failed: \(error.localizedDescription)")
+            print("❌ Error processing message: \(error.localizedDescription)")
         }
     }
+    
+    // PR #25: Commented out - will be replaced by unified agent
+    // private func processQueue() async {
+    //     isProcessing = true
+    //     
+    //     while !processingQueue.isEmpty {
+    //         let message = processingQueue.removeFirst()
+    //         
+    //         // Run AI features in parallel
+    //         async let calendarTask: Void = extractCalendarIfEnabled(message)
+    //         async let deadlineTask: Void = extractDeadlinesIfEnabled(message)
+    //         async let priorityTask: Void = detectPriorityIfEnabled(message)
+    //         
+    //         await calendarTask
+    //         await deadlineTask
+    //         await priorityTask
+    //     }
+    //     
+    //     isProcessing = false
+    // }
+    
+    // MARK: - Calendar Extraction
+    // PR #25: Commented out - old implementation will be replaced by unified agent
+    // private func extractCalendarIfEnabled(_ message: Message) async {
+    //     guard calendarExtractionEnabled, !message.text.isEmpty else { return }
+    //     
+    //     do {
+    //         let events = try await functionsService.extractCalendarEvents(
+    //             messageText: message.text,
+    //             conversationId: message.conversationId,
+    //             messageId: message.id ?? UUID().uuidString
+    //         )
+    //         
+    //         if !events.isEmpty {
+    //             print("📅 Extracted \(events.count) calendar event(s) from message")
+    //             // Store in Firestore automatically by the function
+    //             // Invalidate cache
+    //             eventCache.removeValue(forKey: message.conversationId)
+    //         }
+    //     } catch {
+    //         print("⚠️ Calendar extraction failed: \(error.localizedDescription)")
+    //     }
+    // }
     
     func getExtractedEvents(for conversationId: String) async throws -> [ExtractedEvent] {
         // Check cache
@@ -98,29 +149,30 @@ class AIService: ObservableObject {
     }
     
     // MARK: - Priority Detection
-    private func detectPriorityIfEnabled(_ message: Message) async {
-        guard priorityDetectionEnabled, !message.text.isEmpty else { return }
-        
-        do {
-            let priority = try await functionsService.detectPriority(messageText: message.text)
-            
-            // Only update if confidence is high
-            if priority.confidence > 0.75 {
-                print("🚨 Priority detected: \(priority.level) (\(Int(priority.confidence * 100))%)")
-                
-                // Update message in Firestore
-                try await firestoreService.updateMessagePriority(
-                    messageId: message.id ?? UUID().uuidString,
-                    conversationId: message.conversationId,
-                    priority: priority.level,
-                    reason: priority.reason,
-                    confidence: priority.confidence
-                )
-            }
-        } catch {
-            print("⚠️ Priority detection failed: \(error.localizedDescription)")
-        }
-    }
+    // PR #25: Commented out - old implementation will be replaced by unified agent
+    // private func detectPriorityIfEnabled(_ message: Message) async {
+    //     guard priorityDetectionEnabled, !message.text.isEmpty else { return }
+    //     
+    //     do {
+    //         let priority = try await functionsService.detectPriority(messageText: message.text)
+    //         
+    //         // Only update if confidence is high
+    //         if priority.confidence > 0.75 {
+    //             print("🚨 Priority detected: \(priority.level) (\(Int(priority.confidence * 100))%)")
+    //             
+    //             // Update message in Firestore
+    //             try await firestoreService.updateMessagePriority(
+    //                 messageId: message.id ?? UUID().uuidString,
+    //                 conversationId: message.conversationId,
+    //                 priority: priority.level,
+    //                 reason: priority.reason,
+    //                 confidence: priority.confidence
+    //             )
+    //         }
+    //     } catch {
+    //         print("⚠️ Priority detection failed: \(error.localizedDescription)")
+    //     }
+    // }
     
     // MARK: - RSVP Tracking
     func getRSVPs(for conversationId: String) async throws -> RSVPResponse? {
@@ -179,24 +231,25 @@ class AIService: ObservableObject {
     }
     
     // MARK: - Deadline Extraction
-    private func extractDeadlinesIfEnabled(_ message: Message) async {
-        guard deadlineRemindersEnabled, !message.text.isEmpty else { return }
-        
-        do {
-            let deadlines = try await functionsService.extractDeadlines(
-                messageText: message.text,
-                conversationId: message.conversationId,
-                messageId: message.id ?? UUID().uuidString
-            )
-            
-            if !deadlines.isEmpty {
-                print("⏰ Extracted \(deadlines.count) deadline(s) from message")
-                // Store in Firestore automatically by the function
-            }
-        } catch {
-            print("⚠️ Deadline extraction failed: \(error.localizedDescription)")
-        }
-    }
+    // PR #25: Commented out - old implementation will be replaced by unified agent
+    // private func extractDeadlinesIfEnabled(_ message: Message) async {
+    //     guard deadlineRemindersEnabled, !message.text.isEmpty else { return }
+    //     
+    //     do {
+    //         let deadlines = try await functionsService.extractDeadlines(
+    //             messageText: message.text,
+    //             conversationId: message.conversationId,
+    //             messageId: message.id ?? UUID().uuidString
+    //         )
+    //         
+    //         if !deadlines.isEmpty {
+    //             print("⏰ Extracted \(deadlines.count) deadline(s) from message")
+    //             // Store in Firestore automatically by the function
+    //         }
+    //     } catch {
+    //         print("⚠️ Deadline extraction failed: \(error.localizedDescription)")
+    //     }
+    // }
     
     func getUserDeadlines(userId: String) async throws -> [Deadline] {
         try await firestoreService.getUserDeadlines(userId: userId)
