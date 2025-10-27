@@ -65,7 +65,13 @@ MessageAI (Weftly) is a cross-platform messaging app designed for busy parents w
 - Image sharing via Firebase Storage
 - Offline message queue with auto-retry
 - Push notifications (FCM + APNs)
-- Profile pictures and display names
+- ✅ **Profile pictures** - Display throughout app with intelligent caching
+  - User avatars shown in chat list, message bubbles, group roster, toolbar
+  - Tappable avatars open user profile detail view
+  - Fixed URL path (overwrites on upload, no versioning)
+  - Preloaded before chat opens for instant display
+  - Nuke library: 200MB disk cache + 100MB memory cache
+  - Smooth transitions from initials to photo (no flashing)
 
 **Online Presence & Last Seen System (Cost-Optimized, WhatsApp-Style):**
 
