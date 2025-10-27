@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct EventCardView: View {
-    let event: ExtractedEvent
+    let event: DigestEvent
     let onAddToCalendar: () -> Void
     var onDismiss: (() -> Void)? = nil
     
@@ -32,8 +32,13 @@ struct EventCardView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
                         .font(.caption2)
-                    Text(event.date, style: .time)
-                        .font(.caption)
+                    if let time = event.time, !time.isEmpty {
+                        Text(time)
+                            .font(.caption)
+                    } else {
+                        Text(event.date, style: .time)
+                            .font(.caption)
+                    }
                 }
                 .foregroundStyle(.secondary)
                 
@@ -94,32 +99,5 @@ struct EventCardView: View {
     }
 }
 
-#Preview {
-    VStack(spacing: 12) {
-        EventCardView(
-            event: ExtractedEvent(
-                title: "Soccer practice",
-                date: Date().addingTimeInterval(3600),
-                location: "Park",
-                confidence: 0.95,
-                messageId: "123",
-                conversationId: "456"
-            ),
-            onAddToCalendar: {}
-        )
-        
-        EventCardView(
-            event: ExtractedEvent(
-                title: "Birthday party",
-                date: Date().addingTimeInterval(86400),
-                confidence: 0.85,
-                addedToCalendar: true,
-                messageId: "123",
-                conversationId: "456"
-            ),
-            onAddToCalendar: {}
-        )
-    }
-    .padding()
-}
+//#Preview { /* Preview removed to avoid referencing old types */ // }
 

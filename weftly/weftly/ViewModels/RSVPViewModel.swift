@@ -8,15 +8,15 @@ class RSVPViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let functionsService = FunctionsService.shared
+    private let firestoreService = FirestoreService()
     
     func loadRSVPs(for conversationId: String) async {
         isLoading = true
         errorMessage = nil
         
         do {
-            let rsvp = try await functionsService.trackRSVP(conversationId: conversationId, eventId: nil)
-            activeRSVPs = [rsvp]
+            let rsvps = try await firestoreService.getRSVPs(conversationId: conversationId)
+            activeRSVPs = rsvps
         } catch {
             errorMessage = "Failed to load RSVPs: \(error.localizedDescription)"
             print("❌ RSVP load error: \(error)")
@@ -26,27 +26,12 @@ class RSVPViewModel: ObservableObject {
     }
     
     func sendReminders(for eventId: String, conversationId: String) async {
-        // TODO: Call Firebase Function to send reminders
+        // TODO: agent-driven reminders
         print("📧 Sending RSVP reminders for event: \(eventId)")
     }
     
     func refreshRSVP(_ eventId: String, conversationId: String) async {
-        isLoading = true
-        
-        do {
-            let rsvp = try await functionsService.trackRSVP(conversationId: conversationId, eventId: eventId)
-            
-            // Update in list
-            if let index = activeRSVPs.firstIndex(where: { $0.id == eventId }) {
-                activeRSVPs[index] = rsvp
-            } else {
-                activeRSVPs.append(rsvp)
-            }
-        } catch {
-            errorMessage = "Failed to refresh RSVP: \(error.localizedDescription)"
-        }
-        
-        isLoading = false
+        await loadRSVPs(for: conversationId)
     }
 }
 

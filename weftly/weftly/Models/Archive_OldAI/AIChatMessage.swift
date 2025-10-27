@@ -1,9 +1,12 @@
+// Archived old AI models - excluded from build
+#if false
 import Foundation
 
 enum AIChatRole: String, Codable {
     case user
     case assistant
 }
+#endif
 
 struct AIChatMessage: Codable, Identifiable {
     var id: String

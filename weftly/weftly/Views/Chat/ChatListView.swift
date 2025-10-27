@@ -23,6 +23,8 @@ struct ChatListView: View {
     @State private var showCamera = false
     @State private var searchText = ""
     @State private var selectedList: ConversationList?
+    @State private var showToggleConfirmation: Conversation?
+    @State private var toggleTarget: Conversation?
     
     init(authService: AuthService, networkMonitor: NetworkMonitor) {
         self.authService = authService
@@ -171,10 +173,37 @@ struct ChatListView: View {
             ForEach(filteredConversations) { conversation in
                 let unread = viewModel.getUnreadCount(for: conversation)
                 conversationRow(for: conversation, unreadCount: unread)
+                    .background(Color.clear)
+                    .listRowBackground(Color.clear)
+                    .contentShape(Rectangle())
+                    .gesture(longPressGesture(for: conversation))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            toggleTarget = conversation
+                            showToggleConfirmation = conversation
+                        } label: {
+                            Label(viewModel.isAIIndexingEnabled(for: conversation) ? "Disable AI" : "Enable AI",
+                                  systemImage: viewModel.isAIIndexingEnabled(for: conversation) ? "sparkles.slash" : "sparkles")
+                        }
+                        .tint(.yellow)
+                        Button(role: .destructive) {
+                            viewModel.deleteConversation(conversation)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
             }
         }
         .listStyle(.plain)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func longPressGesture(for conversation: Conversation) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.6)
+            .onEnded { _ in
+                toggleTarget = conversation
+                showToggleConfirmation = conversation
+            }
     }
     
     func conversationRow(for conversation: Conversation, unreadCount: Int) -> some View {
@@ -188,18 +217,12 @@ struct ChatListView: View {
             ConversationRow(
                 conversation: conversation,
                 currentUserId: authService.currentUser?.id ?? "",
-                unreadCount: unreadCount
+                unreadCount: unreadCount,
+                aiEnabled: viewModel.isAIIndexingEnabled(for: conversation)
             )
         }
         .contextMenu {
             contextMenuContent(for: conversation)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                viewModel.deleteConversation(conversation)
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
         }
     }
     
@@ -219,6 +242,13 @@ struct ChatListView: View {
                         }
                     }
                 }
+            }
+            Button {
+                toggleTarget = conversation
+                showToggleConfirmation = conversation
+            } label: {
+                let enabled = viewModel.isAIIndexingEnabled(for: conversation)
+                Label(enabled ? "Disable AI" : "Enable AI", systemImage: enabled ? "sparkles.slash" : "sparkles")
             }
         }
     }
@@ -340,6 +370,23 @@ struct ChatListView: View {
                 viewModel.stopListening()
                 listsViewModel.stopListening()
             }
+            .alert(isPresented: Binding(get: { showToggleConfirmation != nil }, set: { if !$0 { showToggleConfirmation = nil } })) {
+                guard let conversation = showToggleConfirmation else {
+                    return Alert(title: Text(""))
+                }
+                let enabled = viewModel.isAIIndexingEnabled(for: conversation)
+                return Alert(
+                    title: Text(enabled ? "Disable AI Digest" : "Enable AI Digest"),
+                    message: Text(enabled ? "Turn off AI processing for this conversation?" : "Turn on AI processing for this conversation?"),
+                    primaryButton: .destructive(enabled ? Text("Disable") : Text("Enable")) {
+                        viewModel.toggleAIIndexing(for: conversation)
+                        showToggleConfirmation = nil
+                    },
+                    secondaryButton: .cancel {
+                        showToggleConfirmation = nil
+                    }
+                )
+            }
             .onChange(of: authService.currentUser) { _, newUser in
                 print("📱 Auth state changed, user: \(newUser?.displayName ?? "nil")")
                 viewModel.stopListening()
@@ -355,13 +402,15 @@ struct ConversationRow: View {
     let conversation: Conversation
     let currentUserId: String
     let unreadCount: Int  // Passed from parent (100% local calculation - KEY FIX)
+    let aiEnabled: Bool
     @StateObject private var presenceViewModel: PresenceViewModel
     @State private var showProfileDetail = false
     
-    init(conversation: Conversation, currentUserId: String, unreadCount: Int) {
+    init(conversation: Conversation, currentUserId: String, unreadCount: Int, aiEnabled: Bool) {
         self.conversation = conversation
         self.currentUserId = currentUserId
         self.unreadCount = unreadCount
+        self.aiEnabled = aiEnabled
         
         // For direct chats, get the other user's ID
         let otherUserId = conversation.type == .direct 
@@ -423,6 +472,11 @@ struct ConversationRow: View {
                     Text(conversation.displayName(for: currentUserId))
                         .font(.headline)
                         .fontWeight(unreadCount > 0 ? .semibold : .regular)
+                    if aiEnabled {
+                        Image(systemName: "sparkles")
+                            .font(.caption)
+                            .foregroundStyle(.yellow)
+                    }
                     
                     Spacer()
                     

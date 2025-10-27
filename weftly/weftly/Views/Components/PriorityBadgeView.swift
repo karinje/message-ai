@@ -1,11 +1,18 @@
 import SwiftUI
 
+enum PriorityLevel: String {
+    case urgent, important, normal
+    var color: Color { self == .urgent ? .red : (self == .important ? .orange : .gray) }
+    var icon: String { self == .urgent ? "exclamationmark.triangle.fill" : (self == .important ? "star.fill" : "circle") }
+    var backgroundColor: Color { self == .urgent ? .red.opacity(0.1) : (self == .important ? .orange.opacity(0.1) : .clear) }
+}
+
 struct PriorityBadgeView: View {
-    let priority: AIPriority
+    let priority: PriorityLevel
     let size: BadgeSize
     let showBackground: Bool
     
-    init(priority: AIPriority, size: BadgeSize = .medium, showBackground: Bool = true) {
+    init(priority: PriorityLevel, size: BadgeSize = .medium, showBackground: Bool = true) {
         self.priority = priority
         self.size = size
         self.showBackground = showBackground

@@ -100,6 +100,14 @@ struct weftlyApp: App {
                         // Initialize PrivacyManager with current user (single listener)
                         if let userId = authService.currentUser?.id {
                             await PrivacyManager.shared.startListeningToCurrentUser(userId: userId)
+                            
+                            // Start global AI listener for background message processing
+                            await MainActor.run {
+                                AIService.shared.startGlobalListener(
+                                    userId: userId,
+                                    context: modelContainer.mainContext
+                                )
+                            }
                         }
                     }
                 }
@@ -116,12 +124,23 @@ struct weftlyApp: App {
                     // Start PrivacyManager listener
                     if let userId = authService.currentUser?.id {
                         await PrivacyManager.shared.startListeningToCurrentUser(userId: userId)
+                        
+                        // Start global AI listener for background message processing
+                        await MainActor.run {
+                            AIService.shared.startGlobalListener(
+                                userId: userId,
+                                context: modelContainer.mainContext
+                            )
+                        }
                     }
                 }
             } else {
-                // User signed out - stop privacy listener
+                // User signed out - stop listeners
                 Task {
                     await PrivacyManager.shared.stopListeningToCurrentUser()
+                    await MainActor.run {
+                        AIService.shared.stopGlobalListener()
+                    }
                 }
             }
         }

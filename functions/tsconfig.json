@@ -14,7 +14,8 @@
   },
   "compileOnSave": true,
   "include": [
-    "src"
+    "src",
+    "src/types/shims.d.ts"
   ],
   "exclude": [
     "node_modules",

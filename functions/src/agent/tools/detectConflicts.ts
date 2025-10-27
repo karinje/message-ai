@@ -37,7 +37,7 @@ export const detectConflictsTool = tool(
           return null;
         }
       })
-      .filter((e): e is EventRange => e !== null);
+      .filter((e: EventRange | null): e is EventRange => e !== null);
     
     for (let i = 0; i < eventRanges.length; i++) {
       for (let j = i + 1; j < eventRanges.length; j++) {
@@ -69,9 +69,9 @@ export const detectConflictsTool = tool(
   },
   {
     name: "detect_conflicts",
-    description: "Detect actual TIME OVERLAPS between events. Pass in the proposed event plus any existing events (from calendarContext/currentDigest). Requires ISO startDateTime/endDateTime values.",
+    description: "Detect actual TIME OVERLAPS between events. Pass in the proposed event plus existing device calendar events (from calendarContext ONLY - do NOT use currentDigest.events). Requires ISO startDateTime/endDateTime values.",
     schema: z.object({
-      events: z.array(conflictEventSchema).min(2).describe("Array of events to check for conflicts, including the new proposed event and existing calendar events."),
+      events: z.array(conflictEventSchema).min(2).describe("Array of events to check for conflicts: the new proposed event + existing device calendar events from calendarContext."),
     })
   }
 );

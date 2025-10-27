@@ -4,9 +4,12 @@
 //
 //  Created for unified agent architecture (PR #32)
 //  AI Chat interface
+//
 
 import SwiftUI
 import SwiftData
+import FirebaseFunctions
+import FirebaseAuth
 
 struct AssistantChatView: View {
     @Environment(\.modelContext) private var modelContext
@@ -91,7 +94,7 @@ struct AssistantChatView: View {
     }
     
     func queryAIAssistant(query: String) async throws -> String {
-        guard let userId = AuthService.shared.currentUser?.id else {
+        guard let userId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "AIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"])
         }
         
@@ -125,7 +128,7 @@ struct AssistantChatView: View {
         }
         
         // Call Firebase Function
-        let callable = FunctionsService.shared.functions.httpsCallable("aiChatQuery")
+        let callable = Functions.functions().httpsCallable("aiChatQuery")
         
         let requestData: [String: Any] = [
             "userId": userId,

@@ -44,6 +44,7 @@ struct ChatDetailView: View {
     private func contentView(viewModel: ChatViewModel) -> some View {
         VStack(spacing: 0) {
             groupHeaderView(viewModel: viewModel)
+            aiBanner(viewModel: viewModel)
             messagesListView(viewModel: viewModel)
             typingIndicatorView(viewModel: viewModel)
             networkStatusView()
@@ -102,6 +103,35 @@ struct ChatDetailView: View {
                 members: participantNames(for: viewModel),
                 currentUserName: authService.currentUser?.displayName,
                 conversation: viewModel.currentConversation
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func aiBanner(viewModel: ChatViewModel) -> some View {
+        if viewModel.aiIndexingEnabled {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.yellow)
+                Text("AI Digest Enabled")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button {
+                    viewModel.toggleAIIndexing()
+                } label: {
+                    Text("Turn Off")
+                        .font(.caption2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.2))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+            .background(
+                LinearGradient(colors: [Color.yellow.opacity(0.2), Color.orange.opacity(0.1)], startPoint: .leading, endPoint: .trailing)
             )
         }
     }

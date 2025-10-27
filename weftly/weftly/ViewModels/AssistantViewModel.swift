@@ -53,21 +53,12 @@ class AssistantViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            // Call AI agent
-            let response = try await functionsService.sendAIChatMessage(
-                message: trimmedText,
-                chatId: currentChatId ?? UUID().uuidString,
-                history: messages
-            )
-            
-            // Add assistant response
+            // Temporarily disable direct chat until unified agent chat is wired end-to-end
             let assistantMessage = AIChatMessage(
                 role: .assistant,
-                content: response.response,
-                toolsUsed: response.toolsUsed
+                content: "Chat agent coming soon. Use the Digest tab meanwhile."
             )
             messages.append(assistantMessage)
-            
         } catch {
             errorMessage = "Failed to get response: \(error.localizedDescription)"
             print("❌ AI chat error: \(error)")

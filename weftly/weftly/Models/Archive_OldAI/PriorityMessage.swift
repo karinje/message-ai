@@ -1,3 +1,5 @@
+// Archived old AI models - excluded from build
+#if false
 import Foundation
 
 /// A message that has been flagged as urgent or important by AI
@@ -25,4 +27,5 @@ struct PriorityMessage: Identifiable, Codable {
         dismissedBy?.contains(userId) ?? false
     }
 }
+#endif
 

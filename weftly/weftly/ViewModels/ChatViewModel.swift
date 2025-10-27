@@ -18,6 +18,7 @@ class ChatViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var pendingImageData: Data?
     @Published var currentConversation: Conversation
+    @Published var aiIndexingEnabled: Bool = false
     
     private let firestoreService = FirestoreService()
     private let storageService = StorageService()
@@ -25,6 +26,7 @@ class ChatViewModel: ObservableObject {
     private let networkMonitor: NetworkMonitor
     private let modelContext: ModelContext
     
+    private let messageCacheService = MessageCacheService.shared
     private var typingTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
@@ -34,6 +36,9 @@ class ChatViewModel: ObservableObject {
         self.networkMonitor = networkMonitor
         self.modelContext = modelContext
         observeNetworkChanges()
+        Task { [weak self] in
+            await self?.loadAIIndexingState()
+        }
     }
     
     private func observeNetworkChanges() {
@@ -63,6 +68,10 @@ class ChatViewModel: ObservableObject {
         // No periodic heartbeat - only update on explicit actions to reduce Firestore writes
         Task {
             await authService.updatePresence(isOnline: true)
+        }
+
+        Task { [weak self] in
+            await self?.loadAIIndexingState()
         }
         
         // PRELOAD all profile pictures in this conversation
@@ -134,6 +143,9 @@ class ChatViewModel: ObservableObject {
                                         userId: currentUserId
                                     )
                                 }
+                                
+                                // PR #31: AI processing for incoming messages handled by global listener in AIService
+                                // No need to process here - avoids duplicate processing
                             } catch {
                                 print("❌ Error acknowledging/marking read: \(error)")
                             }
@@ -269,6 +281,22 @@ class ChatViewModel: ObservableObject {
                     try MessageCacheService.shared.saveMessage(sentMessage, currentUserId: currentUserId, in: modelContext)
                     print("✅ Message sent: \(sentMessage.id ?? "no-id") status=\(sentMessage.status.rawValue)")
                     
+                    // PR #31: If AI indexing enabled for this conversation, process via unified agent
+                    do {
+                        print("🔍 Checking AI status: convId=\(conversationId), userId=\(currentUserId)")
+                        let enabled = try messageCacheService.isAIIndexingEnabled(for: conversationId, userId: currentUserId, in: modelContext)
+                        print("🔍 AI enabled result: \(enabled)")
+                        await MainActor.run { self.aiIndexingEnabled = enabled }
+                        if enabled {
+                            print("🔥 [ChatViewModel] Calling AIService for message: \"\(sentMessage.text.prefix(50))...\"")
+                            await AIService.shared.processNewMessage(sentMessage, conversation: currentConversation, context: modelContext)
+                        } else {
+                            print("⚠️ AI NOT enabled for this conversation - enable in settings (gear icon)")
+                        }
+                    } catch {
+                        print("❌ Error checking AI status: \(error)")
+                    }
+                    
                     // Reload from cache
                     await MainActor.run {
                         loadMessagesFromCache()
@@ -289,6 +317,33 @@ class ChatViewModel: ObservableObject {
                 }
             }
             // If offline, message already saved with .pending status - nothing more to do
+        }
+    }
+
+    func loadAIIndexingState() async {
+        guard let conversationId = currentConversation.id,
+              let currentUserId = authService.currentUser?.id else {
+            await MainActor.run { self.aiIndexingEnabled = false }
+            return
+        }
+        do {
+            let enabled = try messageCacheService.isAIIndexingEnabled(for: conversationId, userId: currentUserId, in: modelContext)
+            await MainActor.run { self.aiIndexingEnabled = enabled }
+        } catch {
+            print("❌ Error loading AI indexing state: \(error)")
+            await MainActor.run { self.aiIndexingEnabled = false }
+        }
+    }
+
+    func toggleAIIndexing() {
+        guard let conversationId = currentConversation.id,
+              let currentUserId = authService.currentUser?.id else { return }
+        do {
+            let current = try messageCacheService.isAIIndexingEnabled(for: conversationId, userId: currentUserId, in: modelContext)
+            try messageCacheService.setAIIndexing(for: conversationId, userId: currentUserId, enabled: !current, in: modelContext)
+            aiIndexingEnabled = !current
+        } catch {
+            print("❌ Error toggling AI indexing: \(error)")
         }
     }
     

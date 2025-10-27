@@ -71,7 +71,7 @@ class CalendarService: ObservableObject {
     }
     
     // MARK: - Event Management
-    func addEvent(_ extractedEvent: ExtractedEvent) async throws -> String {
+    func addEvent(_ extractedEvent: DigestEvent) async throws -> String {
         // Request access if not granted
         if !hasCalendarAccess {
             let granted = try await requestCalendarAccess()

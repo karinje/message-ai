@@ -1,15 +1,17 @@
 import SwiftUI
 
+import SwiftUI
+
 struct PriorityMessagesSection: View {
-    let messages: [PriorityMessage]
+    let messages: [DigestPriorityMessage]
     let viewModel: DigestViewModel
     @State private var isExpanded = true
     
-    var urgentMessages: [PriorityMessage] {
+    var urgentMessages: [DigestPriorityMessage] {
         messages.filter { $0.priority == "urgent" }
     }
     
-    var importantMessages: [PriorityMessage] {
+    var importantMessages: [DigestPriorityMessage] {
         messages.filter { $0.priority == "important" }
     }
     
@@ -68,7 +70,7 @@ struct PriorityMessagesSection: View {
 }
 
 struct PriorityMessageCard: View {
-    let message: PriorityMessage
+    let message: DigestPriorityMessage
     let viewModel: DigestViewModel
     @State private var showDetails = false
     @State private var showChatHint = false
@@ -77,9 +79,7 @@ struct PriorityMessageCard: View {
         VStack(alignment: .leading, spacing: 8) {
             // Header with priority badge and dismiss button
             HStack {
-                if let priorityLevel = message.priorityLevel {
-                    PriorityBadgeView(priority: priorityLevel, size: .medium)
-                }
+                PriorityBadgeView(priority: message.priority == "urgent" ? .urgent : .important, size: .medium)
                 
                 Spacer()
                 
@@ -106,7 +106,7 @@ struct PriorityMessageCard: View {
                 .foregroundStyle(.primary)
             
             // Message text
-            Text(message.text)
+            Text(message.messageText)
                 .font(.body)
                 .foregroundStyle(.primary)
                 .lineLimit(showDetails ? nil : 3)
@@ -118,7 +118,7 @@ struct PriorityMessageCard: View {
                         .font(.caption)
                         .foregroundStyle(.yellow)
                     
-                    Text(message.priorityReason)
+                    Text(message.reason)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -162,11 +162,11 @@ struct PriorityMessageCard: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(message.isUrgent ? Color.red.opacity(0.05) : Color.orange.opacity(0.05))
+                .fill((message.priority == "urgent") ? Color.red.opacity(0.05) : Color.orange.opacity(0.05))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(message.isUrgent ? Color.red.opacity(0.2) : Color.orange.opacity(0.2), lineWidth: 1)
+                .stroke((message.priority == "urgent") ? Color.red.opacity(0.2) : Color.orange.opacity(0.2), lineWidth: 1)
         )
     }
 }
@@ -175,29 +175,27 @@ struct PriorityMessageCard: View {
     ScrollView {
         PriorityMessagesSection(
             messages: [
-            PriorityMessage(
-                id: "1",
-                conversationId: "conv1",
-                senderId: "user1",
-                senderName: "Sarah",
-                text: "EMERGENCY! Pick up Sam from school NOW",
-                timestamp: Date().addingTimeInterval(-3600),
-                priority: "urgent",
-                priorityReason: "The message indicates an emergency situation requiring immediate action",
-                priorityConfidence: 1.0
-            ),
-            PriorityMessage(
-                id: "2",
-                conversationId: "conv1",
-                senderId: "user2",
-                senderName: "John",
-                text: "Can you RSVP for the party by tonight? Need final headcount",
-                timestamp: Date().addingTimeInterval(-7200),
-                priority: "important",
-                priorityReason: "The message requires attention today with a specific deadline",
-                priorityConfidence: 0.9
-            )
-        ],
+                DigestPriorityMessage(
+                    id: "1",
+                    messageText: "EMERGENCY! Pick up Sam from school NOW",
+                    priority: "urgent",
+                    reason: "The message indicates an emergency situation requiring immediate action",
+                    conversationId: "conv1",
+                    senderId: "user1",
+                    senderName: "Sarah",
+                    timestamp: Date().addingTimeInterval(-3600)
+                ),
+                DigestPriorityMessage(
+                    id: "2",
+                    messageText: "Can you RSVP for the party by tonight? Need final headcount",
+                    priority: "important",
+                    reason: "The message requires attention today with a specific deadline",
+                    conversationId: "conv1",
+                    senderId: "user2",
+                    senderName: "John",
+                    timestamp: Date().addingTimeInterval(-7200)
+                )
+            ],
             viewModel: DigestViewModel(authService: AuthService())
         )
         .padding()

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CalendarEventsSection: View {
-    let events: [ExtractedEvent]
+    let events: [DigestEvent]
     @ObservedObject var viewModel: DigestViewModel
     @State private var isExpanded = true
     
@@ -53,25 +53,17 @@ struct CalendarEventsSection: View {
     }
     
     // MARK: - Grouped Events
-    var upcomingEvents: [ExtractedEvent] {
+    var upcomingEvents: [DigestEvent] {
         let now = Date()
         let filtered = events.filter { $0.date > now }.sorted { $0.date < $1.date }
-        
-        // Debug logging
-        print("📅 CalendarEventsSection: Total events: \(events.count), Upcoming: \(filtered.count)")
-        for event in events {
-            let isPast = event.date <= now
-            print("   - \(event.title): \(event.date) (isPast: \(isPast))")
-        }
-        
         return filtered
     }
     
-    var todayEvents: [ExtractedEvent] {
+    var todayEvents: [DigestEvent] {
         upcomingEvents.filter { Calendar.current.isDateInToday($0.date) }
     }
     
-    var thisWeekEvents: [ExtractedEvent] {
+    var thisWeekEvents: [DigestEvent] {
         let calendar = Calendar.current
         let today = Date()
         let weekFromNow = calendar.date(byAdding: .day, value: 7, to: today) ?? today
@@ -81,7 +73,7 @@ struct CalendarEventsSection: View {
         }
     }
     
-    var laterEvents: [ExtractedEvent] {
+    var laterEvents: [DigestEvent] {
         let calendar = Calendar.current
         let weekFromNow = calendar.date(byAdding: .day, value: 7, to: Date()) ?? Date()
         
@@ -91,7 +83,7 @@ struct CalendarEventsSection: View {
 
 struct SectionGroup: View {
     let title: String
-    let events: [ExtractedEvent]
+    let events: [DigestEvent]
     @ObservedObject var viewModel: DigestViewModel
     
     var body: some View {
@@ -121,20 +113,5 @@ struct SectionGroup: View {
     }
 }
 
-#Preview {
-    CalendarEventsSection(
-        events: [
-            ExtractedEvent(
-                title: "Soccer practice",
-                date: Date().addingTimeInterval(3600),
-                location: "Park",
-                confidence: 0.95,
-                messageId: "123",
-                conversationId: "456"
-            )
-        ],
-        viewModel: DigestViewModel(authService: AuthService())
-    )
-    .padding()
-}
+//#Preview { /* Preview removed to avoid referencing old types */ // }
 

@@ -56,18 +56,54 @@ class ChatListViewModel: ObservableObject {
             return 0
         }
     }
+
+    func isAIIndexingEnabled(for conversation: Conversation) -> Bool {
+        guard let context = modelContext,
+              let conversationId = conversation.id,
+              let currentUserId = authService.currentUser?.id else {
+            return false
+        }
+        do {
+            return try MessageCacheService.shared.isAIIndexingEnabled(
+                for: conversationId,
+                userId: currentUserId,
+                in: context
+            )
+        } catch {
+            print("❌ Error checking AI indexing state: \(error)")
+            return false
+        }
+    }
+
+    func toggleAIIndexing(for conversation: Conversation) {
+        guard let context = modelContext,
+              let conversationId = conversation.id,
+              let currentUserId = authService.currentUser?.id else { return }
+        do {
+            let current = try MessageCacheService.shared.isAIIndexingEnabled(
+                for: conversationId,
+                userId: currentUserId,
+                in: context
+            )
+            try MessageCacheService.shared.setAIIndexing(
+                for: conversationId,
+                userId: currentUserId,
+                enabled: !current,
+                in: context
+            )
+        } catch {
+            print("❌ Error toggling AI indexing: \(error)")
+        }
+    }
     
     func startListening() {
         guard let userId = authService.currentUser?.id else {
-            print("❌ ChatListViewModel: No user ID, can't start listening")
+            print("❌ No user ID, can't start listening")
             return
         }
         
-        print("👂 ChatListViewModel: Starting to listen for conversations for user: \(userId)")
-        
         firestoreService.listenToConversations(userId: userId) { [weak self] conversations in
             guard let self else { return }
-            print("📨 ChatListViewModel: Received \(conversations.count) conversations from Firestore")
             
             // Store ALL conversations (unfiltered)
             self.allConversations = conversations
@@ -126,7 +162,6 @@ class ChatListViewModel: ObservableObject {
                             self.conversations[index].lastMessage = lastMessage.text
                             self.conversations[index].lastMessageTime = lastMessage.timestamp
                             self.conversations[index].lastMessageSenderId = lastMessage.senderId
-                            print("⚡️ Updated conversation preview immediately: \(lastMessage.text.prefix(20))...")
                         }
                         
                         // Re-check filter: If conversation now has messages, it should appear
@@ -154,12 +189,6 @@ class ChatListViewModel: ObservableObject {
             } catch {
                 return true
             }
-        }
-        
-        print("✅ After filter: \(filteredConversations.count) conversations (removed \(allConversations.count - filteredConversations.count) empty)")
-        
-        for conv in filteredConversations {
-            print("  - Conv: \(conv.id ?? "no-id"), type: \(conv.type), participants: \(conv.participants.count)")
         }
         
         self.conversations = filteredConversations

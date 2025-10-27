@@ -4,7 +4,7 @@ import Combine
 
 @MainActor
 class CalendarViewModel: ObservableObject {
-    @Published var extractedEvents: [ExtractedEvent] = []
+    @Published var extractedEvents: [DigestEvent] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     
@@ -16,7 +16,8 @@ class CalendarViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            extractedEvents = try await aiService.getExtractedEvents(for: conversationId)
+            // Events flow via DigestService; optionally query FirestoreService if needed
+            extractedEvents = []
         } catch {
             errorMessage = "Failed to load events: \(error.localizedDescription)"
             print("❌ Calendar load error: \(error)")
@@ -25,7 +26,7 @@ class CalendarViewModel: ObservableObject {
         isLoading = false
     }
     
-    func addToCalendar(_ event: ExtractedEvent) async {
+    func addToCalendar(_ event: DigestEvent) async {
         do {
             _ = try await calendarService.addEvent(event)
             
@@ -39,7 +40,7 @@ class CalendarViewModel: ObservableObject {
         }
     }
     
-    func deleteEvent(_ event: ExtractedEvent) async {
+    func deleteEvent(_ event: DigestEvent) async {
         extractedEvents.removeAll { $0.id == event.id }
         // TODO: Delete from Firestore
     }

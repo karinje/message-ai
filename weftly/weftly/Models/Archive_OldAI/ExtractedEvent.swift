@@ -1,3 +1,5 @@
+// Archived old AI models - excluded from build
+#if false
 import Foundation
 import SwiftData
 
@@ -102,4 +104,5 @@ final class ExtractedEvent: Codable {
         try container.encodeIfPresent(dismissedBy, forKey: .dismissedBy)
     }
 }
+#endif
 

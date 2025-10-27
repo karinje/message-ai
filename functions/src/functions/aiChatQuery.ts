@@ -1,7 +1,8 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
-import { createSimpleAgent } from '../agent/simpleAgent';
-import { getFirestore } from 'firebase-admin/firestore';
+import { createUnifiedAgent } from '../agent/unifiedAgent';
+// import { getFirestore } from 'firebase-admin/firestore';
+import { prepareAgentContext } from '../utils_new/contextPreparation';
 
 interface AIChatQueryRequest {
   userId: string;
@@ -39,34 +40,22 @@ export const aiChatQuery = onCall<AIChatQueryRequest>({
     // Sort by timestamp
     allMessages.sort((a, b) => a.timestamp - b.timestamp);
     
-    // 3. Get digest state
-    const db = getFirestore();
-    const digestRef = db.collection('users').doc(userId).collection('digest');
+    // 3. Prepare context with recent messages
+    const ctx = await prepareAgentContext('ai_chat', userId, {
+      recentMessages: allMessages,
+      query,
+    });
     
-    const [eventsSnap, deadlinesSnap, prioritySnap, rsvpsSnap] = await Promise.all([
-      digestRef.doc('events').collection('items').get(),
-      digestRef.doc('deadlines').collection('items').get(),
-      digestRef.doc('priorityMessages').collection('items').get(),
-      digestRef.doc('rsvps').collection('items').get(),
-    ]);
-    
-    const currentDigest = {
-      events: eventsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      deadlines: deadlinesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      priorityMessages: prioritySnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      rsvps: rsvpsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-    };
-    
-    // 4. Invoke simple agent
-    const agent = createSimpleAgent();
+    // 4. Invoke unified LangGraph agent
+    const agent = createUnifiedAgent();
     
     try {
       const result = await agent.invoke({
         mode: 'ai_chat',
         userId,
         query,
-        messages: allMessages,
-        currentDigest,
+        messages: ctx.messages,
+        currentDigest: ctx.currentDigest,
         agentMessages: [],
         toolCalls: [],
         output: null,

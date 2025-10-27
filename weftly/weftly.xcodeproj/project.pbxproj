@@ -49,6 +49,11 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Models/Archive_OldAI/AIChatMessage.swift,
+				Models/Archive_OldAI/AIDecision.swift,
+				Models/Archive_OldAI/AIPriority.swift,
+				Models/Archive_OldAI/ExtractedEvent.swift,
+				Models/Archive_OldAI/PriorityMessage.swift,
 			);
 			target = F08DE5252EA72002000ED503 /* weftly */;
 		};

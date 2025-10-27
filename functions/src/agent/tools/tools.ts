@@ -1,7 +1,7 @@
-export { createCalendarEvent } from './createCalendarEvent';
-export { createDeadline } from './createDeadline';
-export { createPriorityMessage } from './createPriorityMessage';
-export { createRSVP } from './createRSVP';
-export { createSuggestion } from './createSuggestion';
+export { createCalendarEventTool } from './createCalendarEvent';
+export { createDeadlineTool } from './createDeadline';
+export { createPriorityMessageTool } from './createPriorityMessage';
+export { createRSVPTool } from './createRSVP';
+export { createSuggestionTool } from './createSuggestion';
 
 

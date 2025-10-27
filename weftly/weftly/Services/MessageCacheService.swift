@@ -254,6 +254,26 @@ class MessageCacheService {
         }
     }
     
+    func isAIIndexingEnabled(
+        for conversationId: String,
+        userId: String,
+        in context: ModelContext
+    ) throws -> Bool {
+        let state = try getConversationState(for: conversationId, userId: userId, in: context)
+        return state.aiIndexingEnabled
+    }
+
+    func setAIIndexing(
+        for conversationId: String,
+        userId: String,
+        enabled: Bool,
+        in context: ModelContext
+    ) throws {
+        let state = try getConversationState(for: conversationId, userId: userId, in: context)
+        state.aiIndexingEnabled = enabled
+        try context.save()
+    }
+
     /// Mark conversation as read (updates lastReadTimestamp)
     func markConversationAsRead(
         conversationId: String,

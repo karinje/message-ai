@@ -4,12 +4,21 @@
 //
 //  Created for unified agent architecture (PR #32)
 //  Main Digest tab displaying AI-extracted items
+//
 
 import SwiftUI
 import SwiftData
+import FirebaseAuth
 
 struct DigestView: View {
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject var authService: AuthService
+    @StateObject private var viewModel: DigestViewModel
+
+    init(authService: AuthService) {
+        _authService = ObservedObject(initialValue: authService)
+        _viewModel = StateObject(wrappedValue: DigestViewModel(authService: authService))
+    }
     @Query(sort: \DigestEvent.date) private var events: [DigestEvent]
     @Query(sort: \DigestDeadline.dueDate) private var deadlines: [DigestDeadline]
     @Query(sort: \DigestPriorityMessage.timestamp, order: .reverse) private var priorityMessages: [DigestPriorityMessage]
@@ -18,41 +27,53 @@ struct DigestView: View {
     
     var pendingEvents: [DigestEvent] { events.filter { $0.status == "pending" } }
     var pendingDeadlines: [DigestDeadline] { deadlines.filter { $0.status == "pending" } }
-    var pendingSuggestions: [DigestSuggestion] { suggestions.filter { $0.status == "pending" } }
+    var pendingRSVPs: [DigestRSVP] { rsvps.filter { $0.status == "pending" } }
+    var pendingSuggestions: [DigestSuggestion] {
+        let pending = suggestions.filter { $0.status == "pending" }
+        print("🔍 DigestView: Total suggestions: \(suggestions.count), pending: \(pending.count)")
+        for s in suggestions {
+            print("   - \(s.type): \"\(s.suggestionDescription.prefix(50))...\" status=\(s.status) options=\(s.options.count)")
+        }
+        return pending
+    }
     var pendingPriorityMessages: [DigestPriorityMessage] { priorityMessages.filter { $0.status == "pending" } }
     
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    if viewModel.isLoading {
+                        ProgressView("Loading…")
+                            .padding(.bottom, 8)
+                    }
                     // Proactive suggestions (top priority)
                     if !pendingSuggestions.isEmpty {
-                        SuggestionsSection(suggestions: pendingSuggestions)
+                        SuggestionsSection(suggestions: pendingSuggestions, viewModel: viewModel)
                     }
                     
                     // Priority messages
                     if !pendingPriorityMessages.isEmpty {
-                        PriorityMessagesSection(messages: pendingPriorityMessages)
+                        PriorityMessagesSection(messages: pendingPriorityMessages, viewModel: viewModel)
                     }
                     
                     // Calendar events
                     if !pendingEvents.isEmpty {
-                        EventsSection(events: pendingEvents)
+                        CalendarEventsSection(events: pendingEvents, viewModel: viewModel)
                     }
                     
                     // Deadlines
                     if !pendingDeadlines.isEmpty {
-                        DeadlinesSection(deadlines: pendingDeadlines)
+                        DeadlinesSection(deadlines: pendingDeadlines, viewModel: viewModel)
                     }
                     
                     // RSVPs
-                    if !rsvps.isEmpty {
-                        RSVPSection(rsvps: rsvps)
+                    if !pendingRSVPs.isEmpty {
+                        RSVPSection(rsvps: pendingRSVPs, viewModel: viewModel)
                     }
                     
                     // Empty state
                     if pendingEvents.isEmpty && pendingDeadlines.isEmpty && 
-                       pendingPriorityMessages.isEmpty && rsvps.isEmpty && pendingSuggestions.isEmpty {
+                       pendingPriorityMessages.isEmpty && pendingRSVPs.isEmpty && pendingSuggestions.isEmpty {
                         ContentUnavailableView(
                             "No insights yet",
                             systemImage: "sparkles",
@@ -66,77 +87,20 @@ struct DigestView: View {
             .navigationTitle("Digest")
         }
         .onAppear {
-            if let userId = AuthService.shared.currentUser?.id {
-                DigestService.shared.startListening(userId: userId, context: modelContext)
-            }
+            viewModel.bootstrapIfNeeded(context: modelContext, authService: authService)
+        }
+        .onDisappear {
+            viewModel.tearDown()
         }
     }
 }
 
 // MARK: - Section Views
-
-struct EventsSection: View {
-    let events: [DigestEvent]
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("📅 Upcoming Events")
-                .font(.headline)
-            
-            ForEach(events) { event in
-                EventCard(event: event)
-            }
-        }
-    }
-}
-
-struct DeadlinesSection: View {
-    let deadlines: [DigestDeadline]
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("⏰ Deadlines")
-                .font(.headline)
-            
-            ForEach(deadlines) { deadline in
-                DeadlineCard(deadline: deadline)
-            }
-        }
-    }
-}
-
-struct PriorityMessagesSection: View {
-    let messages: [DigestPriorityMessage]
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("🚨 Important Messages")
-                .font(.headline)
-            
-            ForEach(messages) { message in
-                PriorityMessageCard(message: message)
-            }
-        }
-    }
-}
-
-struct RSVPSection: View {
-    let rsvps: [DigestRSVP]
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("✋ RSVPs")
-                .font(.headline)
-            
-            ForEach(rsvps) { rsvp in
-                RSVPCard(rsvp: rsvp)
-            }
-        }
-    }
-}
+// EventsSection is now CalendarEventsSection in dedicated file
 
 struct SuggestionsSection: View {
     let suggestions: [DigestSuggestion]
+    let viewModel: DigestViewModel
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -144,59 +108,9 @@ struct SuggestionsSection: View {
                 .font(.headline)
             
             ForEach(suggestions) { suggestion in
-                SuggestionCard(suggestion: suggestion)
+                SuggestionCard(suggestion: suggestion, viewModel: viewModel)
             }
         }
-    }
-}
-
-// MARK: - Card Views (Simple implementations)
-
-struct EventCard: View {
-    let event: DigestEvent
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(event.title)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    
-                    Text(event.date, style: .date)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    if let time = event.time {
-                        Text(time)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                Text("\(Int(event.confidence * 100))%")
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.2))
-                    .cornerRadius(4)
-            }
-            
-            HStack(spacing: 12) {
-                Button("Add to Calendar") {}
-                    .buttonStyle(.bordered)
-                    .font(.caption)
-                
-                Button("Dismiss") {}
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-            }
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
     }
 }
 
@@ -223,75 +137,190 @@ struct DeadlineCard: View {
     }
 }
 
-struct PriorityMessageCard: View {
-    let message: DigestPriorityMessage
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(message.priority.uppercased())
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(message.priority == "urgent" ? .red : .orange)
-                
-                Spacer()
-            }
-            
-            Text(message.messageText)
-                .font(.subheadline)
-            
-            Text(message.reason)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-    }
-}
+// Duplicate components moved to dedicated files; keep DigestView lean
 
-struct RSVPCard: View {
-    let rsvp: DigestRSVP
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(rsvp.eventTitle)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            
-            Text("Date: \(rsvp.eventDate, style: .date)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Text("Responses: \(rsvp.responses.count)")
-                .font(.caption)
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-    }
-}
+// Duplicate components moved to dedicated files; keep DigestView lean
 
 struct SuggestionCard: View {
     let suggestion: DigestSuggestion
+    let viewModel: DigestViewModel
+    @State private var selectedOption: String?
+    @State private var isExpanded = false
+    @State private var showAlternatives = false
+    
+    var isConflictResolution: Bool {
+        suggestion.type == "conflict_resolution"
+    }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(suggestion.suggestionDescription)
-                .font(.subheadline)
-            
-            HStack {
-                Button("Accept") {}
-                    .buttonStyle(.bordered)
-                    .font(.caption)
+        Button(action: {
+            if isConflictResolution {
+                showAlternatives = true
+            } else {
+                isExpanded.toggle()
+            }
+        }) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack(spacing: 8) {
+                    Image(systemName: isConflictResolution ? "exclamationmark.triangle.fill" : "lightbulb.fill")
+                        .foregroundStyle(isConflictResolution ? .orange : .blue)
+                        .font(.title3)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(isConflictResolution ? "Scheduling Conflict" : "Suggestion")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                        
+                        Text(suggestion.suggestionDescription)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .lineLimit(isExpanded ? nil : 2)
+                    }
+                    
+                    Spacer()
+                    
+                    if isConflictResolution && !suggestion.options.isEmpty {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 
-                Button("Dismiss") {}
+                // Quick dismiss button
+                if !isConflictResolution {
+                    Button(action: {
+                        Task {
+                            await viewModel.dismissSuggestion(suggestion)
+                        }
+                    }) {
+                        Text("Dismiss")
+                            .font(.caption)
+                    }
                     .buttonStyle(.borderless)
-                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isConflictResolution ? Color.orange.opacity(0.1) : Color.blue.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isConflictResolution ? Color.orange.opacity(0.3) : Color.blue.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showAlternatives) {
+            ConflictResolutionSheet(
+                suggestion: suggestion,
+                viewModel: viewModel,
+                selectedOption: $selectedOption,
+                isPresented: $showAlternatives
+            )
+        }
+    }
+}
+
+struct ConflictResolutionSheet: View {
+    let suggestion: DigestSuggestion
+    let viewModel: DigestViewModel
+    @Binding var selectedOption: String?
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                // Conflict description
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.title2)
+                        
+                        Text("Scheduling Conflict")
+                            .font(.title3)
+                            .fontWeight(.bold)
+                    }
+                    
+                    Text(suggestion.suggestionDescription)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                }
+                .padding()
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(12)
+                
+                // Alternative times
+                if !suggestion.options.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Here are alternative times:")
+                            .font(.headline)
+                        
+                        ForEach(Array(suggestion.options.enumerated()), id: \.offset) { index, option in
+                            Button(action: {
+                                selectedOption = option
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: selectedOption == option ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(selectedOption == option ? .blue : .gray)
+                                        .font(.title3)
+                                    
+                                    Text(option)
+                                        .font(.body)
+                                        .foregroundStyle(.primary)
+                                    
+                                    Spacer()
+                                }
+                                .padding()
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(selectedOption == option ? Color.blue.opacity(0.15) : Color(.systemGray6))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "No alternatives available",
+                        systemImage: "calendar.badge.exclamationmark",
+                        description: Text("No alternative time slots were suggested.")
+                    )
+                }
+                
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Resolve Conflict")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Dismiss") {
+                        Task {
+                            await viewModel.dismissSuggestion(suggestion)
+                            isPresented = false
+                        }
+                    }
+                }
+                
+                if selectedOption != nil {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Schedule") {
+                            // TODO: Create event at selected time
+                            Task {
+                                await viewModel.dismissSuggestion(suggestion)
+                                isPresented = false
+                            }
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
             }
         }
-        .padding()
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(12)
+        .presentationDetents([.medium, .large])
     }
 }

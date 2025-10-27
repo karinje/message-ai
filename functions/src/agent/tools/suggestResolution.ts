@@ -9,6 +9,9 @@ export const suggestResolutionTool = tool(
     
     const description = `Conflict detected for "${conflictingEventTitle}". Here are alternative times:`;
     
+    // Extract just the labels for iOS compatibility (expects array of strings, not objects)
+    const labels = alternativeSlots.map((slot: any) => slot.label);
+    
     await db.collection('users').doc(userId)
       .collection('digest').doc('suggestions')
       .collection('items').doc(suggestionId)
@@ -16,7 +19,7 @@ export const suggestResolutionTool = tool(
         type: 'conflict_resolution',
         priority: 'high',
         suggestionDescription: description,
-        optionsJSON: JSON.stringify(alternativeSlots),
+        optionsJSON: JSON.stringify(labels), // Store as string array, not object array
         relatedEventId: conflictingEventId,
         originalDateTime: originalDateTime,
         status: 'pending',

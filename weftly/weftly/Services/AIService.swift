@@ -3,6 +3,7 @@ import SwiftData
 import Combine
 import FirebaseFunctions
 import FirebaseAuth
+import FirebaseFirestore
 import EventKit
 
 @MainActor
@@ -17,6 +18,10 @@ class AIService: ObservableObject {
     private var processingQueue: [Message] = []
     private var isProcessing = false
     
+    // Global background listener
+    private var globalListener: ListenerRegistration?
+    private var processedMessageIds = Set<String>()
+    
     @Published var isEnabled = true
     @Published var priorityDetectionEnabled = true
     @Published var calendarExtractionEnabled = true
@@ -29,7 +34,12 @@ class AIService: ObservableObject {
     // MARK: - Message Processing
     // PR #31: New unified agent implementation
     func processNewMessage(_ message: Message, conversation: Conversation, context: ModelContext) async {
-        guard isEnabled else { return }
+        print("🔥 AIService.processNewMessage called for: \"\(message.text.prefix(50))...\"")
+        
+        guard isEnabled else {
+            print("⚠️ AI globally disabled")
+            return
+        }
         
         // 1. Check if AI indexing enabled for this conversation
         let descriptor = FetchDescriptor<LocalConversationState>(
@@ -37,8 +47,11 @@ class AIService: ObservableObject {
         )
         guard let state = try? context.fetch(descriptor).first,
               state.aiIndexingEnabled else {
-            return // AI not enabled for this thread
+            print("⛔️ AI NOT enabled for conversation \(conversation.id ?? "unknown") - enable it in chat settings!")
+            return
         }
+        
+        print("✅ AI enabled for this thread, proceeding...")
         
         // 2. Get recent messages from SwiftData
         let recentDescriptor = FetchDescriptor<LocalMessage>(
@@ -97,6 +110,11 @@ class AIService: ObservableObject {
             "calendarEvents": calendarEventsPayload
         ]
         
+        print("🚀 Calling Firebase Function: processMessage")
+        print("   Message: \(message.text)")
+        print("   Conv: \(conversationId)")
+        print("   Recent msgs: \(recentMessages.count)")
+        
         do {
             _ = try await callable.call(requestData)
             
@@ -105,9 +123,10 @@ class AIService: ObservableObject {
             state.lastProcessedAt = Date()
             try? context.save()
             
-            print("✅ Message processed by unified agent")
+            print("✅ Firebase function call succeeded - agent should process now")
         } catch {
-            print("❌ Error processing message: \(error.localizedDescription)")
+            print("❌ Firebase function call FAILED: \(error.localizedDescription)")
+            print("   Full error: \(error)")
         }
     }
     
@@ -232,6 +251,92 @@ class AIService: ObservableObject {
     func toggleProactiveSuggestions(enabled: Bool) async {
         proactiveSuggestionsEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: "proactiveSuggestionsEnabled")
+    }
+    
+    // MARK: - Global Background Listener
+    func startGlobalListener(userId: String, context: ModelContext) {
+        print("🌍 Starting global AI message listener for user: \(userId)")
+        
+        guard isEnabled else {
+            print("⚠️ AI globally disabled, skipping global listener")
+            return
+        }
+        
+        // Stop existing listener if any
+        stopGlobalListener()
+        
+        let db = Firestore.firestore()
+        
+        // Listen to incoming messages where current user is a recipient
+        globalListener = db.collection("messages")
+            .whereField("pendingRecipientIds", arrayContains: userId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("❌ Global AI listener error: \(error)")
+                    return
+                }
+                
+                guard let changes = snapshot?.documentChanges else { return }
+                
+                Task { @MainActor in
+                    for change in changes {
+                        guard change.type == .added else { continue }
+                        
+                        guard let message = try? change.document.data(as: Message.self) else {
+                            continue
+                        }
+                        
+                        var msg = message
+                        if msg.id == nil {
+                            msg.id = change.document.documentID
+                        }
+                        
+                        // Skip if already processed
+                        guard let msgId = msg.id, !self.processedMessageIds.contains(msgId) else {
+                            continue
+                        }
+                        
+                        // Mark as processed immediately to avoid duplicates
+                        self.processedMessageIds.insert(msgId)
+                        
+                        print("🌍 [Global] New message detected: \"\(msg.text.prefix(50))...\"")
+                        
+                        // Check if AI enabled for this conversation
+                        let descriptor = FetchDescriptor<LocalConversationState>(
+                            predicate: #Predicate { state in state.conversationId == msg.conversationId }
+                        )
+                        
+                        guard let state = try? context.fetch(descriptor).first,
+                              state.aiIndexingEnabled else {
+                            print("⏭️ [Global] AI not enabled for conversation \(msg.conversationId)")
+                            continue
+                        }
+                        
+                        print("✅ [Global] AI enabled, processing message in background...")
+                        
+                        // Create a minimal Conversation object for processing
+                        let conversation = Conversation(
+                            id: msg.conversationId,
+                            type: .direct,
+                            participants: []
+                        )
+                        
+                        // Process the message
+                        await self.processNewMessage(msg, conversation: conversation, context: context)
+                    }
+                }
+            }
+        
+        print("✅ Global AI listener active")
+    }
+    
+    func stopGlobalListener() {
+        globalListener?.remove()
+        globalListener = nil
+        processedMessageIds.removeAll()
+        print("🛑 Global AI listener stopped")
     }
     
     // MARK: - Cache Management (legacy no-ops)

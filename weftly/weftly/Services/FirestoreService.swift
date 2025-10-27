@@ -317,7 +317,7 @@ class FirestoreService: ObservableObject {
     }
     
     func listenToMessages(conversationId: String, currentUserId: String, completion: @escaping ([Message]) -> Void) {
-        print("👂 Setting up Firestore message listeners for conversation: \(conversationId)")
+        // Setting up message listeners
         
         // LISTENER 1: Incoming messages (where user is a recipient)
         // CRITICAL: Query uses pendingRecipientIds - stops matching after user acknowledges
@@ -337,7 +337,7 @@ class FirestoreService: ObservableObject {
                 }
                 
                 let changes = snapshot.documentChanges
-                print("📬 Incoming message listener fired - \(changes.count) changes")
+                // Incoming messages
                 
                 var changedMessages: [Message] = []
                 
@@ -347,7 +347,7 @@ class FirestoreService: ObservableObject {
                         if var msg = try? change.document.data(as: Message.self) {
                             if msg.id == nil { msg.id = change.document.documentID }
                             changedMessages.append(msg)
-                            print("➕ Incoming: \(msg.id ?? "no-id")")
+                            // Incoming message
                         }
                         
                     case .modified:
@@ -388,7 +388,7 @@ class FirestoreService: ObservableObject {
                 }
                 
                 let changes = snapshot.documentChanges
-                print("📤 Sent message listener fired - \(changes.count) changes")
+                // Sent messages
                 
                 var changedMessages: [Message] = []
                 
@@ -396,7 +396,7 @@ class FirestoreService: ObservableObject {
                     switch change.type {
                     case .added:
                         // Initial load - skip (already in cache from optimistic UI)
-                        print("➕ Sent message confirmed: \(change.document.documentID)")
+                        break
                         
                     case .modified:
                         // Delivery & Read status update
@@ -466,7 +466,7 @@ class FirestoreService: ObservableObject {
         // Store BOTH listeners
         messageListeners["\(conversationId)_incoming"] = incomingListener
         messageListeners["\(conversationId)_sent"] = sentListener
-        print("✅ Both listeners attached for conversation: \(conversationId)")
+        // Listeners attached
     }
     
     func removeMessageListener(conversationId: String) {
@@ -610,37 +610,8 @@ class FirestoreService: ObservableObject {
     
     // MARK: - AI Features
     
-    func getExtractedEvents(conversationId: String, currentUserId: String? = nil) async throws -> [ExtractedEvent] {
-        let snapshot = try await db.collection("conversations")
-            .document(conversationId)
-            .collection("extractedEvents")
-            .order(by: "date", descending: false)
-            .getDocuments()
-        
-        print("📥 Fetching extracted events for conversation: \(conversationId)")
-        print("📦 Found \(snapshot.documents.count) event documents")
-        
-        let allEvents = snapshot.documents.compactMap { doc -> ExtractedEvent? in
-            print("🔍 Document \(doc.documentID) data: \(doc.data())")
-            do {
-                let event = try doc.data(as: ExtractedEvent.self)
-                print("✅ Decoded event: \(event.title) at \(event.date)")
-                return event
-            } catch {
-                print("❌ Failed to decode event: \(error)")
-                return nil
-            }
-        }
-        
-        // Filter out events dismissed by current user
-        if let userId = currentUserId {
-            let visibleEvents = allEvents.filter { !$0.isDismissedBy(userId: userId) }
-            print("📊 Visible events after filtering: \(visibleEvents.count)")
-            return visibleEvents
-        }
-        
-        return allEvents
-    }
+    // Legacy extractedEvents path removed in favor of unified digest; keep a stub if callers remain
+    func getExtractedEvents(conversationId: String, currentUserId: String? = nil) async throws -> [DigestEvent] { return [] }
     
     func updateMessagePriority(
         messageId: String,
@@ -693,17 +664,8 @@ class FirestoreService: ObservableObject {
         return visibleDeadlines
     }
     
-    func getDecisions(conversationId: String) async throws -> [AIDecision] {
-        let snapshot = try await db.collection("conversations")
-            .document(conversationId)
-            .collection("decisions")
-            .order(by: "timestamp", descending: true)
-            .getDocuments()
-        
-        return snapshot.documents.compactMap { doc in
-            try? doc.data(as: AIDecision.self)
-        }
-    }
+    // Decisions removed from UI; previous API deleted
+    // func getDecisions(conversationId: String) async throws -> [AIDecision] { return [] }
     
     func getRSVPs(conversationId: String) async throws -> [RSVPResponse] {
         let snapshot = try await db.collection("conversations")
@@ -720,7 +682,7 @@ class FirestoreService: ObservableObject {
     // MARK: - Priority Messages
     
     /// Fetch urgent/important messages from the last 48 hours across all conversations
-    func getPriorityMessages(conversationIds: [String], currentUserId: String) async throws -> [PriorityMessage] {
+    func getPriorityMessages(conversationIds: [String], currentUserId: String) async throws -> [DigestPriorityMessage] {
         guard !conversationIds.isEmpty else {
             print("⚠️ No conversation IDs provided for priority messages")
             return []
@@ -732,7 +694,7 @@ class FirestoreService: ObservableObject {
         let cutoffDate = Calendar.current.date(byAdding: .hour, value: -48, to: Date()) ?? Date()
         print("📅 Cutoff date: \(cutoffDate)")
         
-        var allPriorityMessages: [PriorityMessage] = []
+        var allPriorityMessages: [DigestPriorityMessage] = []
         
         for conversationId in conversationIds {
             print("🔍 Checking conversation: \(conversationId)")
@@ -748,7 +710,7 @@ class FirestoreService: ObservableObject {
             
             print("📦 Found \(snapshot.documents.count) messages with priority field in \(conversationId)")
             
-            let messages = snapshot.documents.compactMap { doc -> PriorityMessage? in
+            let messages = snapshot.documents.compactMap { doc -> DigestPriorityMessage? in
                 let data = doc.data()
                 print("📄 Document \(doc.documentID): \(data)")
                 
@@ -776,17 +738,16 @@ class FirestoreService: ObservableObject {
                 print("✅ Decoded priority message: \(priority) - \(text.prefix(50))")
                 print("   dismissedBy: \(dismissedBy ?? [])")
                 
-                return PriorityMessage(
+                return DigestPriorityMessage(
                     id: doc.documentID,
+                    messageText: text,
+                    priority: priority,
+                    reason: priorityReason,
                     conversationId: conversationId,
                     senderId: senderId,
                     senderName: senderName,
-                    text: text,
                     timestamp: timestamp,
-                    priority: priority,
-                    priorityReason: priorityReason,
-                    priorityConfidence: priorityConfidence,
-                    dismissedBy: dismissedBy
+                    requiresAction: false
                 )
             }
             
@@ -796,7 +757,8 @@ class FirestoreService: ObservableObject {
         print("✅ Total priority messages found: \(allPriorityMessages.count)")
         
         // Filter out messages dismissed by current user
-        let visibleMessages = allPriorityMessages.filter { !$0.isDismissedBy(userId: currentUserId) }
+        // DigestPriorityMessage doesn't carry dismissedBy; visibility filtering handled via digest status upstream
+        let visibleMessages = allPriorityMessages
         print("📊 Visible messages after filtering: \(visibleMessages.count)")
         
         // Sort by timestamp (most recent first)

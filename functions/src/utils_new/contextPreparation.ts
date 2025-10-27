@@ -49,22 +49,20 @@ export const prepareAgentContext = async (
     }
   }
 
-  // Digest state
+  // Digest state - NO events (conflict detection uses calendarContext only)
   const db = getFirestore();
   const digestRef = db.collection('users').doc(userId).collection('digest');
-  const [eventsSnap, deadlinesSnap, prioritySnap, rsvpsSnap, suggestionsSnap] = await Promise.all([
-    digestRef.doc('events').collection('items').get(),
+  const [deadlinesSnap, prioritySnap, rsvpsSnap, suggestionsSnap] = await Promise.all([
     digestRef.doc('deadlines').collection('items').get(),
     digestRef.doc('priorityMessages').collection('items').get(),
     digestRef.doc('rsvps').collection('items').get(),
     digestRef.doc('suggestions').collection('items').get(),
   ]);
 
-  // Only include pending items (filter out dismissed/completed)
+  // Filter items by status - only pending items
+  // NO EVENTS in digest context - conflicts should ONLY use calendarContext (device calendar)
   const currentDigest = {
-    events: eventsSnap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter((e: any) => e.status === 'pending'),
+    events: [], // Empty - conflict detection uses calendarContext ONLY
     deadlines: deadlinesSnap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter((d: any) => d.status === 'pending'),

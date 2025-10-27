@@ -1,3 +1,5 @@
+// Archived old AI models - excluded from build
+#if false
 import Foundation
 
 struct AIDecision: Codable, Identifiable {
@@ -45,4 +47,5 @@ struct AIDecision: Codable, Identifiable {
         participants.count
     }
 }
+#endif
 

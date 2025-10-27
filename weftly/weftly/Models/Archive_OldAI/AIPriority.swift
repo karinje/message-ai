@@ -1,3 +1,5 @@
+// Archived old AI models - excluded from build
+#if false
 import SwiftUI
 
 enum AIPriority: String, Codable {
@@ -35,4 +37,5 @@ enum AIPriority: String, Codable {
         return AIPriority(rawValue: string) ?? .normal
     }
 }
+#endif
 
