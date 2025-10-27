@@ -20,7 +20,7 @@ struct CreateBroadcastListView: View {
     @State private var showError = false
     @State private var errorMessage = ""
     
-    private let db = Firestore.firestore()
+    private let firestoreService = FirestoreService()
     
     var filteredUsers: [User] {
         if searchText.isEmpty {
@@ -65,15 +65,11 @@ struct CreateBroadcastListView: View {
                     } label: {
                         HStack {
                             // Avatar
-                            Circle()
-                                .fill(Color.blue.opacity(0.2))
-                                .frame(width: 40, height: 40)
-                                .overlay(
-                                    Text(user.displayName.prefix(2).uppercased())
-                                        .font(.caption)
-                                        .fontWeight(.bold)
-                                        .foregroundStyle(.blue)
-                                )
+                            UserAvatarView(
+                                profilePictureUrl: user.profilePictureUrl,
+                                displayName: user.displayName,
+                                size: 40
+                            )
                             
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(user.displayName)
@@ -154,14 +150,15 @@ struct CreateBroadcastListView: View {
     
     private func loadUsers() async {
         do {
-            let snapshot = try await db.collection("users").getDocuments()
-            availableUsers = snapshot.documents.compactMap { doc in
-                try? doc.data(as: User.self)
-            }
+            // Use FirestoreService to properly load users with IDs
+            var users = try await firestoreService.fetchAllUsers()
+            
             // Filter out current user
             if let currentUserId = viewModel.authService.currentUser?.id {
-                availableUsers.removeAll { $0.id == currentUserId }
+                users.removeAll { $0.id == currentUserId }
             }
+            
+            availableUsers = users
         } catch {
             errorMessage = error.localizedDescription
             showError = true
