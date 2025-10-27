@@ -11,7 +11,8 @@ import FirebaseFirestore
 struct ConversationList: Identifiable, Codable, Equatable {
     var id: String?
     var name: String
-    var conversationIds: [String]
+    var conversationIds: [String]  // Deprecated - kept for backward compatibility
+    var userIds: [String]  // NEW: Filter by users instead of conversations
     var icon: String? // SF Symbol name
     var isPreset: Bool
     var createdAt: Date
@@ -21,16 +22,18 @@ struct ConversationList: Identifiable, Codable, Equatable {
         case id
         case name
         case conversationIds
+        case userIds
         case icon
         case isPreset
         case createdAt
         case updatedAt
     }
     
-    init(id: String? = nil, name: String, conversationIds: [String] = [], icon: String? = nil, isPreset: Bool = false, createdAt: Date = Date(), updatedAt: Date = Date()) {
+    init(id: String? = nil, name: String, conversationIds: [String] = [], userIds: [String] = [], icon: String? = nil, isPreset: Bool = false, createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id
         self.name = name
         self.conversationIds = conversationIds
+        self.userIds = userIds
         self.icon = icon
         self.isPreset = isPreset
         self.createdAt = createdAt

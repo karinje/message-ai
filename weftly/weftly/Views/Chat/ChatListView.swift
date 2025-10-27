@@ -64,12 +64,22 @@ struct ChatListView: View {
                 }
                 print("🔍 After Groups filter: \(conversations.count)")
             default:
-                // Custom list - filter by conversationIds from Firestore
-                conversations = conversations.filter { conv in
-                    guard let convId = conv.id else { return false }
-                    return list.conversationIds.contains(convId)
+                // Custom list - filter by userIds (NEW LOGIC)
+                if !list.userIds.isEmpty {
+                    conversations = conversations.filter { conv in
+                        // Show conversations where any participant is in the list's userIds
+                        let otherParticipants = conv.participants.filter { $0 != currentUserId }
+                        return otherParticipants.contains(where: { list.userIds.contains($0) })
+                    }
+                    print("🔍 After custom list filter (userIds): \(conversations.count)")
+                } else {
+                    // Fallback to old conversationIds logic for backward compatibility
+                    conversations = conversations.filter { conv in
+                        guard let convId = conv.id else { return false }
+                        return list.conversationIds.contains(convId)
+                    }
+                    print("🔍 After custom list filter (conversationIds): \(conversations.count)")
                 }
-                print("🔍 After custom list filter: \(conversations.count)")
             }
         }
         

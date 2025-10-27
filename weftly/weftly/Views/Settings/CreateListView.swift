@@ -13,7 +13,8 @@ struct CreateListView: View {
     
     @State private var listName = ""
     @State private var selectedIcon: String = "list.bullet"
-    @State private var selectedConversations: Set<String> = []
+    @State private var selectedUserIds: Set<String> = []
+    @State private var showUserSelection = false
     @State private var showError = false
     @State private var errorMessage = ""
     
@@ -51,6 +52,7 @@ struct CreateListView: View {
                                     .background(selectedIcon == icon ? Color.blue : Color.blue.opacity(0.1))
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, 8)
@@ -59,11 +61,25 @@ struct CreateListView: View {
                 }
                 
                 Section {
-                    Text("After creating your list, you can add conversations to it from the chat list.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Button {
+                        showUserSelection = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "person.3.fill")
+                                .foregroundStyle(.blue)
+                            Text(selectedUserIds.isEmpty ? "Select Users" : "\(selectedUserIds.count) users selected")
+                                .foregroundStyle(selectedUserIds.isEmpty ? .blue : .primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } header: {
-                    Text("Note")
+                    Text("Users in List")
+                } footer: {
+                    Text("Select users to include in this list. Only conversations with these users will appear when you filter by this list.")
+                        .font(.caption)
                 }
             }
             .navigationTitle("Create List")
@@ -79,8 +95,14 @@ struct CreateListView: View {
                     Button("Create") {
                         createList()
                     }
-                    .disabled(listName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(listName.trimmingCharacters(in: .whitespaces).isEmpty || selectedUserIds.isEmpty)
                 }
+            }
+            .sheet(isPresented: $showUserSelection) {
+                UserSelectionView(
+                    authService: viewModel.authService,
+                    selectedUserIds: $selectedUserIds
+                )
             }
             .alert("Error", isPresented: $showError) {
                 Button("OK") { }
@@ -95,7 +117,7 @@ struct CreateListView: View {
             do {
                 try await viewModel.createList(
                     name: listName,
-                    conversationIds: [],
+                    userIds: Array(selectedUserIds),
                     icon: selectedIcon
                 )
                 dismiss()

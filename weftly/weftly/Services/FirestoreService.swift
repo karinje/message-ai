@@ -579,6 +579,30 @@ class FirestoreService: ObservableObject {
         return results
     }
     
+    func fetchAllUsers() async throws -> [User] {
+        // Fetch all users from the system (for list creation)
+        print("📥 Fetching all users...")
+        
+        let snapshot = try await db.collection("users")
+            .limit(to: 500)  // Higher limit for list creation
+            .getDocuments()
+        
+        print("📊 Found \(snapshot.documents.count) total users")
+        
+        let users = snapshot.documents.compactMap { doc -> User? in
+            guard var user = try? doc.data(as: User.self) else {
+                print("⚠️ Failed to decode user from document: \(doc.documentID)")
+                return nil
+            }
+            // Ensure id is populated from documentID
+            if user.id == nil { user.id = doc.documentID }
+            return user
+        }
+        
+        print("✅ Returning \(users.count) users")
+        return users
+    }
+    
     func getUser(userId: String) async throws -> User? {
         let document = try await db.collection("users").document(userId).getDocument()
         return try? document.data(as: User.self)

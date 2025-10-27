@@ -19,7 +19,7 @@ class ListsViewModel: ObservableObject {
     
     private let db = Firestore.firestore()
     private var listener: ListenerRegistration?
-    private let authService: AuthService
+    let authService: AuthService  // Public for UserSelectionView access
     
     init(authService: AuthService) {
         self.authService = authService
@@ -62,7 +62,7 @@ class ListsViewModel: ObservableObject {
         listener = nil
     }
     
-    func createList(name: String, conversationIds: [String], icon: String? = nil) async throws {
+    func createList(name: String, userIds: [String], icon: String? = nil) async throws {
         guard let userId = authService.currentUser?.id else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No current user"])
         }
@@ -73,7 +73,8 @@ class ListsViewModel: ObservableObject {
         let listId = UUID().uuidString
         var list = ConversationList(
             name: name,
-            conversationIds: conversationIds,
+            conversationIds: [],  // Keep empty for backward compatibility
+            userIds: userIds,
             icon: icon,
             isPreset: false
         )
@@ -135,10 +136,21 @@ class ListsViewModel: ObservableObject {
                 conv.type == .group
             }
         default:
-            // Custom list - filter by conversationIds
-            return conversations.filter { conv in
-                guard let convId = conv.id else { return false }
-                return list.conversationIds.contains(convId)
+            // Custom list - filter by userIds (NEW LOGIC)
+            // Show conversations where any participant is in the list's userIds
+            if !list.userIds.isEmpty {
+                return conversations.filter { conv in
+                    // For each conversation, check if any participant is in the list's userIds
+                    // Exclude current user from check (we want to filter by OTHER users)
+                    let otherParticipants = conv.participants.filter { $0 != currentUserId }
+                    return otherParticipants.contains(where: { list.userIds.contains($0) })
+                }
+            } else {
+                // Fallback to old conversationIds logic for backward compatibility
+                return conversations.filter { conv in
+                    guard let convId = conv.id else { return false }
+                    return list.conversationIds.contains(convId)
+                }
             }
         }
     }
