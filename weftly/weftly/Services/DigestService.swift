@@ -8,6 +8,7 @@
 import Foundation
 import FirebaseFirestore
 import SwiftData
+import Combine
 
 @MainActor
 class DigestService: ObservableObject {
@@ -55,7 +56,11 @@ class DigestService: ObservableObject {
             .collection("digest").document("rsvps")
             .collection("items")
             .addSnapshotListener { [weak self] snapshot, error in
-                guard let documents = snapshot?.documents else { return }
+                guard let documents = snapshot?.documents else {
+                    print("⚠️ RSVPs listener: no documents")
+                    return
+                }
+                print("🔔 RSVPs listener fired with \(documents.count) documents")
                 self?.syncRSVPs(documents, context: context)
             }
         
@@ -187,6 +192,8 @@ class DigestService: ObservableObject {
     }
     
     private func syncRSVPs(_ documents: [QueryDocumentSnapshot], context: ModelContext) {
+        print("🔄 Syncing \(documents.count) RSVPs from Firestore")
+        
         for doc in documents {
             let data = doc.data()
             let id = doc.documentID
@@ -198,8 +205,22 @@ class DigestService: ObservableObject {
             let existing = try? context.fetch(descriptor).first
             
             if let rsvp = existing {
-                rsvp.responsesJSON = data["responsesJSON"] as? String ?? rsvp.responsesJSON
+                let oldResponses = rsvp.responsesJSON
+                let newResponses = data["responsesJSON"] as? String ?? rsvp.responsesJSON
+                
+                // ALWAYS update from Firestore (source of truth)
+                rsvp.responsesJSON = newResponses
                 rsvp.totalInvited = data["totalInvited"] as? Int ?? rsvp.totalInvited
+                rsvp.status = data["status"] as? String ?? "pending"
+                rsvp.lastUpdated = Date() // ALWAYS touch to force UI refresh
+                
+                if oldResponses != newResponses {
+                    print("  ✏️ Updated RSVP \(id): responses changed")
+                    print("     OLD: \(oldResponses)")
+                    print("     NEW: \(newResponses)")
+                } else {
+                    print("  ⏭️ RSVP \(id) refreshed: \(oldResponses)")
+                }
             } else {
                 let newRSVP = DigestRSVP(
                     id: id,
@@ -210,11 +231,20 @@ class DigestService: ObservableObject {
                     messageId: data["messageId"] as? String ?? "",
                     isHost: data["isHost"] as? Bool ?? false
                 )
+                newRSVP.status = data["status"] as? String ?? "pending"
+                newRSVP.responsesJSON = data["responsesJSON"] as? String ?? "{}"
+                newRSVP.totalInvited = data["totalInvited"] as? Int ?? 0
                 context.insert(newRSVP)
+                print("  ✨ Created new RSVP \(id): \(newRSVP.eventTitle)")
             }
         }
         
-        try? context.save()
+        do {
+            try context.save()
+            print("✅ RSVP sync complete")
+        } catch {
+            print("❌ Error saving RSVP context: \(error)")
+        }
     }
     
     private func syncSuggestions(_ documents: [QueryDocumentSnapshot], context: ModelContext) {
@@ -258,6 +288,44 @@ class DigestService: ObservableObject {
         try await db.collection("users").document(userId)
             .collection("digest").document("events")
             .collection("items").document(eventId)
+            .updateData(["status": "dismissed"])
+    }
+    
+    func dismissPriorityMessage(_ messageId: String, userId: String) async throws {
+        try await db.collection("users").document(userId)
+            .collection("digest").document("priorityMessages")
+            .collection("items").document(messageId)
+            .updateData(["status": "dismissed"])
+    }
+    
+    func dismissDeadline(_ deadlineId: String, userId: String) async throws {
+        try await db.collection("users").document(userId)
+            .collection("digest").document("deadlines")
+            .collection("items").document(deadlineId)
+            .updateData(["status": "dismissed"])
+    }
+    
+    func completeDeadline(_ deadlineId: String, userId: String) async throws {
+        try await db.collection("users").document(userId)
+            .collection("digest").document("deadlines")
+            .collection("items").document(deadlineId)
+            .updateData([
+                "status": "completed",
+                "completed": true
+            ])
+    }
+    
+    func dismissRSVP(_ rsvpId: String, userId: String) async throws {
+        try await db.collection("users").document(userId)
+            .collection("digest").document("rsvps")
+            .collection("items").document(rsvpId)
+            .updateData(["status": "dismissed"])
+    }
+    
+    func dismissSuggestion(_ suggestionId: String, userId: String) async throws {
+        try await db.collection("users").document(userId)
+            .collection("digest").document("suggestions")
+            .collection("items").document(suggestionId)
             .updateData(["status": "dismissed"])
     }
 }
