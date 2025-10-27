@@ -318,70 +318,167 @@ class FirestoreService: ObservableObject {
     }
     
     func listenToMessages(conversationId: String, currentUserId: String, completion: @escaping ([Message]) -> Void) {
-        print("👂 Setting up Firestore message listener for conversation: \(conversationId)")
+        print("👂 Setting up Firestore message listeners for conversation: \(conversationId)")
         
+        // LISTENER 1: Incoming messages (where user is a recipient)
         // CRITICAL: Query uses pendingRecipientIds - stops matching after user acknowledges
-        let listener = db.collection("messages")
+        let incomingListener = db.collection("messages")
             .whereField("conversationId", isEqualTo: conversationId)
             .whereField("pendingRecipientIds", arrayContains: currentUserId)
             .order(by: "timestamp", descending: false)
             .addSnapshotListener { snapshot, error in
                 if let error = error {
-                    print("❌ Error in message listener: \(error.localizedDescription)")
+                    print("❌ Error in incoming message listener: \(error.localizedDescription)")
                     return
                 }
                 
                 guard let snapshot = snapshot else {
-                    print("⚠️ No snapshot")
+                    print("⚠️ No snapshot (incoming)")
                     return
                 }
                 
-                // ✅ OPTIMIZED: Only process CHANGES (not all documents)
                 let changes = snapshot.documentChanges
-                print("📬 Message listener fired - \(changes.count) changes (not \(snapshot.documents.count) total)")
+                print("📬 Incoming message listener fired - \(changes.count) changes")
                 
                 var changedMessages: [Message] = []
                 
                 for change in changes {
                     switch change.type {
                     case .added:
-                        // New message arrived (or initial load)
                         if var msg = try? change.document.data(as: Message.self) {
                             if msg.id == nil { msg.id = change.document.documentID }
                             changedMessages.append(msg)
-                            print("➕ Added: \(msg.id ?? "no-id")")
+                            print("➕ Incoming: \(msg.id ?? "no-id")")
                         }
                         
                     case .modified:
-                        // Message updated (status change, read receipt, etc)
                         if var msg = try? change.document.data(as: Message.self) {
                             if msg.id == nil { msg.id = change.document.documentID }
                             changedMessages.append(msg)
-                            print("✏️ Modified: \(msg.id ?? "no-id")")
+                            print("✏️ Modified incoming: \(msg.id ?? "no-id")")
                         }
                         
                     case .removed:
-                        // Message deleted from Firestore (ephemeral queue cleanup)
-                        print("🗑️ Removed from Firestore: \(change.document.documentID) (message delivered to all)")
-                        // Don't add to changedMessages - it's deleted
+                        print("🗑️ Removed from Firestore: \(change.document.documentID)")
                     }
                 }
                 
                 if !changedMessages.isEmpty {
-                    print("✉️ Sending \(changedMessages.count) changed messages to cache")
+                    print("✉️ Processing \(changedMessages.count) incoming messages")
                     completion(changedMessages)
-                } else {
-                    print("⏭️ No changes to process")
                 }
             }
         
-        messageListeners[conversationId] = listener
-        print("✅ Listener attached and stored for conversation: \(conversationId)")
+        // LISTENER 2: Sent messages (where user is the sender)
+        // This listener tracks delivery status updates for messages YOU sent
+        let sentListener = db.collection("messages")
+            .whereField("conversationId", isEqualTo: conversationId)
+            .whereField("senderId", isEqualTo: currentUserId)
+            .order(by: "timestamp", descending: false)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("❌ Error in sent message listener: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let snapshot = snapshot else {
+                    print("⚠️ No snapshot (sent)")
+                    return
+                }
+                
+                let changes = snapshot.documentChanges
+                print("📤 Sent message listener fired - \(changes.count) changes")
+                
+                var changedMessages: [Message] = []
+                
+                for change in changes {
+                    switch change.type {
+                    case .added:
+                        // Initial load - skip (already in cache from optimistic UI)
+                        print("➕ Sent message confirmed: \(change.document.documentID)")
+                        
+                    case .modified:
+                        // Delivery & Read status update
+                        if var msg = try? change.document.data(as: Message.self) {
+                            if msg.id == nil { msg.id = change.document.documentID }
+                            
+                            let data = change.document.data()
+                            let deliveredTo = data["deliveredTo"] as? [String] ?? []
+                            let recipientIds = data["recipientIds"] as? [String] ?? []
+                            let readBy = data["readBy"] as? [String] ?? []
+                            
+                            print("📊 Message \(msg.id ?? "no-id"): delivered \(deliveredTo.count)/\(recipientIds.count), read by \(readBy.count)")
+                            
+                            var statusChanged = false
+                            
+                            // WhatsApp behavior for status progression:
+                            // ✓ (single gray) = sent to server
+                            // ✓✓ (double gray) = delivered to ALL recipients
+                            // ✓✓ (double blue) = read by ALL recipients
+                            
+                            // Check READ status first (highest priority)
+                            if !recipientIds.isEmpty && readBy.count == recipientIds.count + 1 {
+                                // All recipients + sender have read (readBy includes sender)
+                                // Or just check if all recipients (excluding sender) have read
+                                let recipientsWhoRead = readBy.filter { $0 != msg.senderId }
+                                if recipientsWhoRead.count == recipientIds.count && msg.status != .read {
+                                    msg.status = .read
+                                    statusChanged = true
+                                    print("✅ Updated status to READ (blue ticks - all \(recipientIds.count) recipients read)")
+                                }
+                            }
+                            // Check DELIVERED status
+                            else if !recipientIds.isEmpty && deliveredTo.count == recipientIds.count && msg.status != .delivered && msg.status != .read {
+                                msg.status = .delivered
+                                statusChanged = true
+                                print("✅ Updated status to DELIVERED (gray ticks - all \(recipientIds.count) recipients acknowledged)")
+                            }
+                            // Partial delivery or read
+                            else if !deliveredTo.isEmpty || !readBy.isEmpty {
+                                print("⏳ Partial: delivered \(deliveredTo.count)/\(recipientIds.count), read \(readBy.count)")
+                            }
+                            
+                            // Only process if status actually changed
+                            if statusChanged {
+                                changedMessages.append(msg)
+                            }
+                        }
+                        
+                    case .removed:
+                        // Message deleted (all recipients acknowledged)
+                        print("✅ Sent message \(change.document.documentID) delivered to ALL and cleaned up")
+                        // Optionally update status to "delivered" in cache before it's removed
+                        if var msg = try? change.document.data(as: Message.self) {
+                            if msg.id == nil { msg.id = change.document.documentID }
+                            msg.status = .delivered
+                            changedMessages.append(msg)
+                        }
+                    }
+                }
+                
+                if !changedMessages.isEmpty {
+                    print("✉️ Processing \(changedMessages.count) sent message updates")
+                    completion(changedMessages)
+                }
+            }
+        
+        // Store BOTH listeners
+        messageListeners["\(conversationId)_incoming"] = incomingListener
+        messageListeners["\(conversationId)_sent"] = sentListener
+        print("✅ Both listeners attached for conversation: \(conversationId)")
     }
     
     func removeMessageListener(conversationId: String) {
-        messageListeners[conversationId]?.remove()
-        messageListeners.removeValue(forKey: conversationId)
+        // Remove both incoming and sent listeners
+        messageListeners["\(conversationId)_incoming"]?.remove()
+        messageListeners.removeValue(forKey: "\(conversationId)_incoming")
+        
+        messageListeners["\(conversationId)_sent"]?.remove()
+        messageListeners.removeValue(forKey: "\(conversationId)_sent")
+        
+        print("🧹 Removed both message listeners for conversation: \(conversationId)")
     }
     
     // MARK: - Ephemeral Message Queue - Acknowledgment Protocol
@@ -402,37 +499,49 @@ class FirestoreService: ObservableObject {
         
         print("✅ Removed from pendingRecipientIds - message will stop matching query")
         
-        // Check if all recipients acknowledged (for instant cleanup - optional)
-        let messageDoc = try await messageRef.getDocument()
-        guard let data = messageDoc.data() else {
-            print("⚠️ Message document not found (may have already been deleted)")
-            return
-        }
-        
-        let pendingRecipientIds = data["pendingRecipientIds"] as? [String] ?? []
-        let deliveredTo = data["deliveredTo"] as? [String] ?? []
-        
-        print("   pendingRecipientIds: \(pendingRecipientIds)")
-        print("   deliveredTo: \(deliveredTo)")
-        
-        // If pendingRecipientIds is empty, all acknowledged → delete instantly
-        if pendingRecipientIds.isEmpty {
-            print("✅ All recipients acknowledged - deleting message from Firebase queue")
-            try await messageRef.delete()
-        } else {
-            print("⏳ Still pending for: \(pendingRecipientIds.count) recipients")
-        }
+        print("   pendingRecipientIds removed for user - delivery acknowledged")
     }
     
     func markMessageAsRead(messageId: String, conversationId: String, userId: String) async throws {
-        try await db.collection("conversations")
-            .document(conversationId)
-            .collection("messages")
-            .document(messageId)
-            .updateData([
-                "readBy": FieldValue.arrayUnion([userId]),
-                "status": MessageStatus.read.rawValue
-            ])
+        // FIXED: Update root messages collection (ephemeral queue architecture)
+        do {
+            try await db.collection("messages")
+                .document(messageId)
+                .updateData([
+                    "readBy": FieldValue.arrayUnion([userId])
+                ])
+            
+            print("📖 Marked message \(messageId) as read by \(userId)")
+            
+            // After marking as read, check if all recipients have read -> delete message from queue
+            let messageDoc = try await db.collection("messages").document(messageId).getDocument()
+            guard let data = messageDoc.data() else {
+                print("⚠️ Message document not found post-read (may already be deleted)")
+                return
+            }
+            
+            let recipientIds = data["recipientIds"] as? [String] ?? []
+            let readBy = data["readBy"] as? [String] ?? []
+            let deliveredTo = data["deliveredTo"] as? [String] ?? []
+            
+            let recipientsWhoRead = readBy.filter { $0 != userId }.filter { recipientIds.contains($0) }
+            if recipientsWhoRead.count == recipientIds.count {
+                // Everyone (except sender) has read
+                print("🧹 All recipients read message \(messageId) - deleting from queue")
+                try await db.collection("messages").document(messageId).delete()
+            } else {
+                print("⏳ Waiting for remaining readers: \(recipientIds.count - recipientsWhoRead.count)")
+            }
+        } catch {
+            // Silently ignore "not found" errors - message already cleaned up from ephemeral queue
+            let nsError = error as NSError
+            if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 5 {
+                // Code 5 = NOT_FOUND - message already deleted, which is fine
+                print("⏭️ Message \(messageId) already deleted (ephemeral queue cleanup)")
+            } else {
+                throw error
+            }
+        }
     }
     
     func updateLastReadTime(conversationId: String, userId: String) async throws {

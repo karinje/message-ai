@@ -194,11 +194,11 @@ final class LocalConversationState {
 ```
 
 **Cleanup Rules:**
-- Message deleted when `pendingRecipientIds` is empty (all acknowledged)
+- Message deleted only after **all recipients have both acknowledged delivery and appear in `readBy`** (tracks blue ticks)
 - OR when `expiresAt < now()` (TTL cleanup via Cloud Function)
 
 **Key Design:** 
-- Query uses `pendingRecipientIds` → message stops matching once user acknowledges
+- Query uses `pendingRecipientIds` for delivery, but message remains in queue until all read receipts arrive
 - No idempotent message saves needed (query prevents re-delivery)
 - Only idempotent ack needed (edge case: ack write fails)
 
@@ -320,7 +320,7 @@ func listenToMessages(threadId: String) {
 }
 ```
 
-#### Step 3: Acknowledge Delivery
+#### Step 3: Acknowledge Delivery (no cleanup yet)
 
 ```swift
 func acknowledgeDelivery(messageId: String, userId: String) async throws {
@@ -331,19 +331,40 @@ func acknowledgeDelivery(messageId: String, userId: String) async throws {
         "pendingRecipientIds": FieldValue.arrayRemove([userId]),
         "deliveredTo": FieldValue.arrayUnion([userId])
     ])
-    
-    // Check if all recipients acknowledged (for instant cleanup - optional)
-    let messageDoc = try await messageRef.getDocument()
-    guard let data = messageDoc.data() else { return }
-    
-    let pendingRecipientIds = data["pendingRecipientIds"] as? [String] ?? []
-    
-    // If pendingRecipientIds is empty, all acknowledged → delete
-    if pendingRecipientIds.isEmpty {
-        try await messageRef.delete()
-        print("✅ Message \(messageId) delivered to all recipients, deleted from Firebase")
-    }
 }
+
+#### Step 4: Mark as Read (triggers blue ticks)
+
+```swift
+func markMessageAsRead(messageId: String, userId: String) async throws {
+    try await db.collection("messages")
+        .document(messageId)
+        .updateData([
+            "readBy": FieldValue.arrayUnion([userId])
+        ])
+}
+```
+
+```javascript
+// Cloud Function (onMessageAcknowledged)
+exports.onMessageAcknowledged = functions.firestore
+  .document('messages/{messageId}')
+  .onUpdate(async (change, context) => {
+    const data = change.after.data();
+    const pending = data.pendingRecipientIds || [];
+    const recipients = data.recipientIds || [];
+    const readBy = data.readBy || [];
+
+    const recipientsWhoRead = readBy.filter((id) => recipients.includes(id));
+    const allDelivered = pending.length === 0;
+    const allRead = recipientsWhoRead.length === recipients.length;
+
+    if (allDelivered && allRead && recipients.length > 0) {
+      console.log(`✅ All recipients delivered & read → deleting ${context.params.messageId}`);
+      await change.after.ref.delete();
+    }
+  });
+```
 ```
 
 ---

@@ -2111,15 +2111,19 @@ exports.onMessageAcknowledged = functions.firestore
   .document('messages/{messageId}')
   .onUpdate(async (change, context) => {
     const messageData = change.after.data();
+    const pendingRecipientIds = messageData.pendingRecipientIds || [];
     const recipientIds = messageData.recipientIds || [];
-    const deliveredTo = messageData.deliveredTo || [];
-    
-    // Check if all recipients acknowledged
-    if (deliveredTo.length === recipientIds.length && recipientIds.length > 0) {
-      console.log(`All recipients acknowledged, deleting: ${context.params.messageId}`);
+    const readBy = messageData.readBy || [];
+
+    const recipientsWhoRead = readBy.filter((id) => recipientIds.includes(id));
+    const allDelivered = pendingRecipientIds.length === 0;
+    const allRead = recipientsWhoRead.length === recipientIds.length;
+
+    if (allDelivered && allRead && recipientIds.length > 0) {
+      console.log(`All recipients delivered & read, deleting: ${context.params.messageId}`);
       await change.after.ref.delete();
     }
-    
+
     return null;
   });
 
@@ -2663,3 +2667,9 @@ This PRD is designed to achieve **Excellent (90-100 points)** on the MessageAI r
 7. 🔜 Delivering 1 advanced AI capability (Proactive Assistant)
 
 **Philosophy:** Reliable infrastructure + thoughtful organization + intelligent assistance = A messaging app busy parents will actually use.
+
+**Cleanup Rules:**
+- Message deleted only after all recipients have acknowledged delivery **and** everyone shows up in `readBy` (guarantees blue ticks before cleanup)
+- OR when `expiresAt < now()` (daily Cloud Function TTL cleanup)
+
+**Deployment Note:** The updated `onMessageAcknowledged` Cloud Function must be redeployed (`firebase deploy --only functions:onMessageAcknowledged`) so messages remain in Firestore until the sender sees blue ticks.

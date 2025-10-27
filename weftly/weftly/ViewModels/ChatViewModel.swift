@@ -78,12 +78,16 @@ class ChatViewModel: ObservableObject {
             print("❌ Error marking conversation as read: \(error)")
         }
         
-        // 3. START FIRESTORE LISTENER (background sync)
+        // 3. MARK EXISTING UNREAD MESSAGES AS READ IN FIREBASE (for sender's blue ticks)
+        Task {
+            await markExistingMessagesAsRead()
+        }
+        
+        // 4. START FIRESTORE LISTENER (background sync)
         firestoreService.listenToMessages(conversationId: conversationId, currentUserId: userId) { [weak self] firestoreMessages in
             guard let self = self else { return }
             
             print("🔥 Firestore listener fired with \(firestoreMessages.count) messages")
-            print("📊 Current messages count: \(self.messages.count)")
             
             // Perform all UI updates on the main thread
             Task { @MainActor in
@@ -96,7 +100,7 @@ class ChatViewModel: ObservableObject {
                     print("❌ Error saving messages to cache: \(error)")
                 }
                 
-                // CRITICAL: Acknowledge delivery for each NEW message (ephemeral queue protocol)
+                // CRITICAL: Acknowledge delivery + mark as read for each NEW incoming message
                 for message in firestoreMessages {
                     guard let messageId = message.id else { continue }
                     
@@ -104,27 +108,29 @@ class ChatViewModel: ObservableObject {
                     if message.senderId != currentUserId {
                         Task {
                             do {
+                                // Acknowledge delivery
                                 try await self.firestoreService.acknowledgeDelivery(
                                     messageId: messageId,
                                     userId: currentUserId
                                 )
+                                
+                                // Mark as read (only NEW messages, not re-marking old ones)
+                                try await self.firestoreService.markMessageAsRead(
+                                    messageId: messageId,
+                                    conversationId: conversationId,
+                                    userId: currentUserId
+                                )
                             } catch {
-                                print("❌ Error acknowledging delivery: \(error)")
+                                print("❌ Error acknowledging/marking read: \(error)")
                             }
                         }
                     }
                 }
                 
                 // CRITICAL: UI must read from cache (single source of truth)
-                // Cache has status progression protection, Firestore data doesn't
                 self.loadMessagesFromCache()
                 
-                print("✅ Reloaded \(self.messages.count) messages from cache")
-                print("📝 Last message: \(self.messages.last?.text ?? "none") status=\(self.messages.last?.status.rawValue ?? "none")")
-                
-                self.markMessagesAsRead()
-                
-                // Update local read state (still no Firestore write!)
+                // Update local read state
                 do {
                     try MessageCacheService.shared.markConversationAsRead(
                         conversationId: conversationId,
@@ -307,14 +313,28 @@ class ChatViewModel: ObservableObject {
         }
     }
     
-    private func markMessagesAsRead() {
+    private func markExistingMessagesAsRead() async {
         guard let conversationId = currentConversation.id else { return }
         guard let userId = authService.currentUser?.id else { return }
         
-        Task {
-            for message in messages where !message.readBy.contains(userId) && message.senderId != userId {
-                if let messageId = message.id {
-                    try? await firestoreService.markMessageAsRead(messageId: messageId, conversationId: conversationId, userId: userId)
+        // Mark messages from others that aren't already marked as read locally.
+        // Rely on message.status to avoid duplicate writes; arrayUnion keeps it idempotent anyway.
+        let messagesToMark = messages.filter { $0.senderId != userId && $0.status != .read }
+        
+        guard !messagesToMark.isEmpty else { return }
+        
+        print("📖 Marking \(messagesToMark.count) messages as read in Firebase")
+        
+        for message in messagesToMark {
+            if let messageId = message.id {
+                do {
+                    try await firestoreService.markMessageAsRead(
+                        messageId: messageId, 
+                        conversationId: conversationId, 
+                        userId: userId
+                    )
+                } catch {
+                    // Ignore errors (message likely deleted from ephemeral queue)
                 }
             }
         }

@@ -311,24 +311,39 @@ export const onMessageAcknowledged = functions.firestore
     const messageData = change.after.data();
     const pendingRecipientIds = messageData.pendingRecipientIds || [];
     const deliveredTo = messageData.deliveredTo || [];
+    const recipientIds = messageData.recipientIds || [];
+    const readBy = messageData.readBy || [];
+
+    const recipientsWhoHaveRead = readBy.filter((id: string) =>
+      recipientIds.includes(id)
+    );
+    const allDelivered = pendingRecipientIds.length === 0;
+    const allRead = recipientsWhoHaveRead.length === recipientIds.length;
 
     console.log(`📨 Message ${context.params.messageId} acknowledgment check`);
-    console.log(`   Pending: ${pendingRecipientIds.length}, Delivered: ${deliveredTo.length}`);
+    console.log(
+      `   Pending: ${pendingRecipientIds.length}, Delivered: ${deliveredTo.length}, Read: ${recipientsWhoHaveRead.length}/${recipientIds.length}`
+    );
 
-    // Check if all recipients acknowledged (pendingRecipientIds is empty)
-    if (pendingRecipientIds.length === 0) {
+    if (allDelivered && allRead) {
       console.log(
-        `✅ All recipients acknowledged, deleting: ${context.params.messageId}`
+        `✅ All recipients delivered & read, deleting: ${context.params.messageId}`
       );
       try {
         await change.after.ref.delete();
         console.log(`🗑️ Message deleted from ephemeral queue`);
       } catch (error) {
         console.error(
-          `❌ Error deleting acknowledged message: ${context.params.messageId}`,
+          `❌ Error deleting fully read message: ${context.params.messageId}`,
           error
         );
       }
+    } else if (allDelivered) {
+      console.log(
+        `⏳ Delivered to all, waiting for reads from ${
+          recipientIds.length - recipientsWhoHaveRead.length
+        } recipients`
+      );
     } else {
       console.log(
         `⏳ Still waiting for ${pendingRecipientIds.length} recipients`
