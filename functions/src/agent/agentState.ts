@@ -13,7 +13,17 @@ export interface AgentState {
     deadlines: any[];
     priorityMessages: any[];
     rsvps: any[];
+    suggestions: any[];
   };
+  calendarContext?: Array<{
+    id: string;
+    title: string;
+    startDateTime: string;
+    endDateTime: string;
+    location?: string;
+    calendarTitle?: string;
+    source?: string;
+  }>;
   agentMessages: any[];
   toolCalls: any[];
   output: any;

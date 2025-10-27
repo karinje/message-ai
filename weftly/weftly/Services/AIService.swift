@@ -1,6 +1,9 @@
 import Foundation
 import SwiftData
 import Combine
+import FirebaseFunctions
+import FirebaseAuth
+import EventKit
 
 @MainActor
 class AIService: ObservableObject {
@@ -9,12 +12,6 @@ class AIService: ObservableObject {
     private let functionsService = FunctionsService.shared
     private let calendarService = CalendarService.shared
     private let firestoreService = FirestoreService()
-    
-    // Cache with 5-minute TTL
-    private var eventCache: [String: (events: [ExtractedEvent], timestamp: Date)] = [:]
-    private var rsvpCache: [String: (rsvp: RSVPResponse, timestamp: Date)] = [:]
-    private var decisionCache: [String: (decisions: [AIDecision], timestamp: Date)] = [:]
-    private let cacheTTL: TimeInterval = 300  // 5 minutes
     
     // Processing queue
     private var processingQueue: [Message] = []
@@ -36,7 +33,7 @@ class AIService: ObservableObject {
         
         // 1. Check if AI indexing enabled for this conversation
         let descriptor = FetchDescriptor<LocalConversationState>(
-            predicate: #Predicate { $0.conversationId == conversation.id }
+            predicate: #Predicate { state in state.conversationId == (conversation.id ?? "") }
         )
         guard let state = try? context.fetch(descriptor).first,
               state.aiIndexingEnabled else {
@@ -45,7 +42,7 @@ class AIService: ObservableObject {
         
         // 2. Get recent messages from SwiftData
         let recentDescriptor = FetchDescriptor<LocalMessage>(
-            predicate: #Predicate { $0.conversationId == conversation.id },
+            predicate: #Predicate { msg in msg.conversationId == (conversation.id ?? "") },
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
         )
         var recentDescriptor2 = recentDescriptor
@@ -54,11 +51,35 @@ class AIService: ObservableObject {
         let recentMessages = (try? context.fetch(recentDescriptor2).reversed()) ?? []
         
         // 3. Call Firebase Function
-        let callable = functionsService.functions.httpsCallable("processMessage")
+        let callable = Functions.functions().httpsCallable("processMessage")
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        var calendarEventsPayload: [[String: Any]] = []
+        if let upcomingEvents = try? await calendarService.getUpcomingEvents(days: 14) {
+            calendarEventsPayload = upcomingEvents.map { event in
+                let start = event.startDate ?? Date()
+                let end = event.endDate ?? start.addingTimeInterval(3600)
+                return [
+                    "id": event.eventIdentifier ?? UUID().uuidString,
+                    "title": event.title ?? "Untitled",
+                    "startDateTime": formatter.string(from: start),
+                    "endDateTime": formatter.string(from: end),
+                    "location": event.location ?? "",
+                    "calendarTitle": event.calendar.title,
+                    "source": "device_calendar"
+                ]
+            }
+        }
+        
+        guard let conversationId = conversation.id else {
+            print("⚠️ Missing conversation.id, skipping processMessage call")
+            return
+        }
         
         let requestData: [String: Any] = [
-            "userId": functionsService.currentUserId ?? "",
-            "conversationId": conversation.id,
+            "userId": (Auth.auth().currentUser?.uid) ?? "",
+            "conversationId": conversationId,
             "newMessage": [
                 "id": message.id ?? UUID().uuidString,
                 "text": message.text,
@@ -72,11 +93,12 @@ class AIService: ObservableObject {
                 "senderId": $0.senderId,
                 "senderName": $0.senderName,
                 "timestamp": Int($0.timestamp.timeIntervalSince1970 * 1000)
-            ]}
+            ]},
+            "calendarEvents": calendarEventsPayload
         ]
         
         do {
-            let result = try await callable.call(requestData)
+            _ = try await callable.call(requestData)
             
             // 4. Update last processed
             state.lastProcessedMessageId = message.id
@@ -132,21 +154,7 @@ class AIService: ObservableObject {
     //     }
     // }
     
-    func getExtractedEvents(for conversationId: String) async throws -> [ExtractedEvent] {
-        // Check cache
-        if let cached = eventCache[conversationId],
-           Date().timeIntervalSince(cached.timestamp) < cacheTTL {
-            return cached.events
-        }
-        
-        // Fetch from Firestore
-        let events = try await firestoreService.getExtractedEvents(conversationId: conversationId)
-        
-        // Update cache
-        eventCache[conversationId] = (events, Date())
-        
-        return events
-    }
+    // Removed legacy getExtractedEvents(cache-based). Digest events now flow via DigestService
     
     // MARK: - Priority Detection
     // PR #25: Commented out - old implementation will be replaced by unified agent
@@ -173,62 +181,6 @@ class AIService: ObservableObject {
     //         print("⚠️ Priority detection failed: \(error.localizedDescription)")
     //     }
     // }
-    
-    // MARK: - RSVP Tracking
-    func getRSVPs(for conversationId: String) async throws -> RSVPResponse? {
-        guard rsvpTrackingEnabled else { return nil }
-        
-        // Check cache
-        if let cached = rsvpCache[conversationId],
-           Date().timeIntervalSince(cached.timestamp) < cacheTTL {
-            return cached.rsvp
-        }
-        
-        // Fetch from Functions
-        do {
-            let rsvp = try await functionsService.trackRSVP(conversationId: conversationId, eventId: nil)
-            
-            // Update cache
-            rsvpCache[conversationId] = (rsvp, Date())
-            
-            return rsvp
-        } catch {
-            print("⚠️ RSVP tracking failed: \(error.localizedDescription)")
-            return nil
-        }
-    }
-    
-    func refreshRSVP(conversationId: String, eventId: String) async throws -> RSVPResponse {
-        let rsvp = try await functionsService.trackRSVP(conversationId: conversationId, eventId: eventId)
-        
-        // Update cache
-        rsvpCache[conversationId] = (rsvp, Date())
-        
-        return rsvp
-    }
-    
-    // MARK: - Decision Summarization
-    func getDecisions(for conversationId: String, query: String? = nil) async throws -> [AIDecision] {
-        // Check cache (only for queries without specific search term)
-        if query == nil,
-           let cached = decisionCache[conversationId],
-           Date().timeIntervalSince(cached.timestamp) < cacheTTL {
-            return cached.decisions
-        }
-        
-        // Fetch from Functions
-        let decisions = try await functionsService.summarizeDecisions(
-            conversationId: conversationId,
-            query: query
-        )
-        
-        // Update cache (only if no query)
-        if query == nil {
-            decisionCache[conversationId] = (decisions, Date())
-        }
-        
-        return decisions
-    }
     
     // MARK: - Deadline Extraction
     // PR #25: Commented out - old implementation will be replaced by unified agent
@@ -282,18 +234,8 @@ class AIService: ObservableObject {
         UserDefaults.standard.set(enabled, forKey: "proactiveSuggestionsEnabled")
     }
     
-    // MARK: - Cache Management
-    func clearCache() {
-        eventCache.removeAll()
-        rsvpCache.removeAll()
-        decisionCache.removeAll()
-        print("🗑️ AI service cache cleared")
-    }
-    
-    func clearCacheForConversation(_ conversationId: String) {
-        eventCache.removeValue(forKey: conversationId)
-        rsvpCache.removeValue(forKey: conversationId)
-        decisionCache.removeValue(forKey: conversationId)
-    }
+    // MARK: - Cache Management (legacy no-ops)
+    func clearCache() { print("🗑️ AI service cache cleared") }
+    func clearCacheForConversation(_ conversationId: String) { }
 }
 

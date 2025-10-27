@@ -1,8 +1,9 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
-import { createSimpleAgent } from '../agent/simpleAgent';
+import { createUnifiedAgent } from '../agent/unifiedAgent';
 import { embedMessage } from '../utils_new/pinecone';
-import { getFirestore } from 'firebase-admin/firestore';
+import { prepareAgentContext } from '../utils_new/contextPreparation';
+// import { getFirestore } from 'firebase-admin/firestore';
 
 interface ProcessMessageRequest {
   userId: string;
@@ -14,7 +15,16 @@ interface ProcessMessageRequest {
     senderName: string;
     timestamp: number;
   };
-  recentMessages: any[]; // From SwiftData (last 50)
+  recentMessages: any[];
+  calendarEvents?: Array<{
+    id: string;
+    title: string;
+    startDateTime: string;
+    endDateTime: string;
+    location?: string;
+    calendarTitle?: string;
+    source?: string;
+  }>;
 }
 
 /**
@@ -28,14 +38,20 @@ export const processMessage = onCall<ProcessMessageRequest>({
   secrets: [OPENAI_API_KEY, PINECONE_API_KEY],
 },
   async (request) => {
-    const { userId, conversationId, newMessage, recentMessages } = request.data;
+    const { userId, conversationId, newMessage, recentMessages, calendarEvents = [] } = request.data;
     
     // 1. Validate
     if (!userId || !conversationId || !newMessage) {
       throw new HttpsError('invalid-argument', 'Missing required fields');
     }
     
-    console.log(`🤖 Processing message ${newMessage.id} for user ${userId}`);
+    console.log(`🤖 Processing message ${newMessage.id} for user ${userId}
+      Sender: ${newMessage.senderName} (${newMessage.senderId})
+      Text: "${newMessage.text}"
+      Timestamp: ${newMessage.timestamp}
+      Recent messages count: ${recentMessages?.length || 0}
+      Calendar events provided: ${calendarEvents.length}
+    `);
     
     // 2. Embed new message to Pinecone for RAG
     try {
@@ -48,26 +64,16 @@ export const processMessage = onCall<ProcessMessageRequest>({
       // Continue even if embedding fails
     }
     
-    // 3. Get current digest state
-    const db = getFirestore();
-    const digestRef = db.collection('users').doc(userId).collection('digest');
+    // 3. Prepare context with semantic RAG
+    const ctx = await prepareAgentContext('background_processing', userId, {
+      conversationId,
+      newMessage,
+      recentMessages,
+      calendarEvents,
+    });
     
-    const [eventsSnap, deadlinesSnap, prioritySnap, rsvpsSnap] = await Promise.all([
-      digestRef.doc('events').collection('items').get(),
-      digestRef.doc('deadlines').collection('items').get(),
-      digestRef.doc('priorityMessages').collection('items').get(),
-      digestRef.doc('rsvps').collection('items').get(),
-    ]);
-    
-    const currentDigest = {
-      events: eventsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      deadlines: deadlinesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      priorityMessages: prioritySnap.docs.map(d => ({ id: d.id, ...d.data() })),
-      rsvps: rsvpsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-    };
-    
-    // 4. Invoke simple agent
-    const agent = createSimpleAgent();
+    // 4. Invoke unified LangGraph agent
+    const agent = createUnifiedAgent();
     
     try {
       const result = await agent.invoke({
@@ -75,8 +81,9 @@ export const processMessage = onCall<ProcessMessageRequest>({
         userId,
         conversationId,
         newMessage,
-        messages: recentMessages,
-        currentDigest,
+        messages: ctx.messages,
+        currentDigest: ctx.currentDigest,
+        calendarContext: ctx.calendarContext,
         agentMessages: [],
         toolCalls: [],
         output: null,
@@ -86,6 +93,7 @@ export const processMessage = onCall<ProcessMessageRequest>({
       
       return {
         success: true,
+        semanticMatchIds: ctx.semanticMatchIds,
         toolCallsExecuted: result.agentMessages.filter((m: any) => m.role === 'function').length,
       };
     } catch (error) {
