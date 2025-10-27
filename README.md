@@ -165,6 +165,70 @@ Layer 3: AI DIGEST (Firebase – User-Specific Intelligence)
 
 ### Unified AI Agent
 
+**Single LangGraph Agent with Multiple Tools:**
+
+All AI features are powered by one unified agent (`functions/src/agent/unifiedAgent.ts`) that uses LangChain/LangGraph with GPT-4o.
+
+**Available Tools:**
+
+1. **`create_calendar_event`**
+   - Extracts meetings, appointments, events from messages
+   - Timezone-aware (Pacific Time default)
+   - Stores: `users/{userId}/digest/events/items/{eventId}`
+   - Fields: title, date, time, location, confidence, status
+
+2. **`create_deadline`**
+   - Detects due dates, tasks, permission slips
+   - Timezone-aware (Pacific Time default)
+   - Stores: `users/{userId}/digest/deadlines/items/{deadlineId}`
+   - Fields: task, dueDate, priority, assignedTo, confidence, status
+
+3. **`create_priority_message`**
+   - Flags urgent/important messages (emergencies, ASAP, pickups)
+   - Stores: `users/{userId}/digest/priorityMessages/items/{messageId}`
+   - Fields: messageText, priority (urgent/important), reason, requiresAction
+
+4. **`create_rsvp`**
+   - Tracks event invitations and responses
+   - Detects "let me know", "RSVP", "can you come"
+   - Stores: `users/{userId}/digest/rsvps/items/{rsvpId}`
+   - Fields: eventTitle, eventDate, isHost, responsesJSON, totalInvited
+
+5. **`create_suggestion`**
+   - Generates proactive suggestions (conflict resolution, reminders)
+   - Stores: `users/{userId}/digest/suggestions/items/{suggestionId}`
+   - Fields: type, priority, description, options (array of alternatives)
+
+6. **`detect_conflicts`**
+   - Finds scheduling conflicts between proposed event and device calendar
+   - Uses iOS device calendar context (from `CalendarService`)
+   - Returns: conflicts array, hasConflicts boolean, reason
+
+**Agent Modes:**
+- `background_processing` - Automatically processes new messages in AI-enabled conversations
+- `ai_chat` - User queries AI assistant for message history insights
+
+**Data Flow:**
+```
+iOS SwiftData → Firebase Function (processMessage) → Unified Agent → Tools → Firestore Digest → iOS DigestService → SwiftData Sync
+```
+
+**Timezone Handling:**
+All tools handle Pacific Time (PST/PDT) by default. Date parsing logic:
+- Full ISO with timezone (e.g., `2025-10-28T15:00:00-07:00`) → use as-is
+- ISO without timezone (e.g., `2025-10-28T15:00:00`) → append `-07:00`
+- Date only (e.g., `2025-10-28`) → noon Pacific for events, end-of-day for deadlines
+
+**Conflict Detection Logic:**
+- Only checks device calendar events (from `calendarContext`)
+- Does NOT use `currentDigest.events` (those are AI suggestions, not committed)
+- Detects actual time overlaps between proposed event and calendar
+- Generates alternative time suggestions on same day as conflict
+
+---
+
+### Original Architecture Notes
+
 Weftly uses a **single LangGraph agent** for all AI features instead of separate Cloud Functions per feature.
 
 ```mermaid

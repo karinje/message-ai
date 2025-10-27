@@ -10,9 +10,17 @@
 **Key Architectural Changes:**
 1. ✅ **SwiftData as single source of truth** - No messages in Firestore
 2. ✅ **Unified LangGraph agent** - Single agent for all features, not separate functions
-3. ✅ **Pinecone for RAG only** - Semantic search, not storage
+3. ✅ **Pinecone for RAG only** - Semantic search, not storage (DEPRECATED: Using direct message passing instead)
 4. ✅ **User-specific digest** - All AI features write to `users/{userId}/digest/`
 5. ✅ **LLM-driven decisions** - No hardcoded rules (e.g., agent infers RSVP host)
+
+**Implemented Tools:**
+- `create_calendar_event` - Extract meetings/appointments (timezone-aware Pacific Time)
+- `create_deadline` - Detect due dates/tasks (timezone-aware Pacific Time)
+- `create_priority_message` - Flag urgent/important messages
+- `create_rsvp` - Track event invitations and responses (timezone-aware Pacific Time)
+- `create_suggestion` - Generate proactive suggestions (conflict resolution)
+- `detect_conflicts` - Find scheduling conflicts using device calendar context
 
 **Timeline:** 5-7 days (PR #25-32)
 

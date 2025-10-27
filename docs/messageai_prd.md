@@ -1677,6 +1677,22 @@ See [AI Features Section](#ai-features-post-mvp)
 
 ---
 
+## AI Features - Unified Agent Architecture ✅ IMPLEMENTED
+
+### Tool Reference
+
+**Agent Tools (LangGraph):**
+- `create_calendar_event` - Extract meeting/appointment events from messages
+- `create_deadline` - Detect and track due dates/tasks
+- `create_priority_message` - Flag urgent/important messages
+- `create_rsvp` - Track event invitations and responses
+- `create_suggestion` - Generate proactive suggestions (conflict resolution, reminders)
+- `detect_conflicts` - Find scheduling conflicts between events
+
+All tools write to `users/{userId}/digest/{type}/items/` in Firestore.
+
+---
+
 ## AI Features (Post-MVP)
 
 ### Persona: Busy Parent/Caregiver
