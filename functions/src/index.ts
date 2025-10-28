@@ -10,6 +10,7 @@ admin.initializeApp();
 // ============================================================================
 export { processMessage } from './functions/processMessage';
 export { aiChatQuery } from './functions/aiChatQuery';
+export { cleanupDismissedSuggestions } from './maintenance/cleanupSuggestions';
 // ============================================================================
 
 

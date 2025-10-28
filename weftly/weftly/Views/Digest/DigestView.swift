@@ -229,6 +229,7 @@ struct ConflictResolutionSheet: View {
     let viewModel: DigestViewModel
     @Binding var selectedOption: String?
     @Binding var isPresented: Bool
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationStack {
@@ -300,9 +301,9 @@ struct ConflictResolutionSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Dismiss") {
+                        dismiss()
                         Task {
                             await viewModel.dismissSuggestion(suggestion)
-                            isPresented = false
                         }
                     }
                 }
@@ -311,9 +312,9 @@ struct ConflictResolutionSheet: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Schedule") {
                             // TODO: Create event at selected time
+                            dismiss()
                             Task {
                                 await viewModel.dismissSuggestion(suggestion)
-                                isPresented = false
                             }
                         }
                         .fontWeight(.semibold)

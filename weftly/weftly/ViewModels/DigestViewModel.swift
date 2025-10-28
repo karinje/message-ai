@@ -289,11 +289,11 @@ class DigestViewModel: ObservableObject {
         guard let currentUserId = authService.currentUser?.id else { return }
         
         do {
+            // Update local SwiftData first (for immediate UI update)
+            suggestion.status = "dismissed"
+            
             // Update Firestore via DigestService
             try await DigestService.shared.dismissSuggestion(suggestion.id, userId: currentUserId)
-            
-            // Update local SwiftData
-            suggestion.status = "dismissed"
             
             print("✅ Suggestion dismissed")
         } catch {
